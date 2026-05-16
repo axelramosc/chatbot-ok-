@@ -9,7 +9,21 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN!;
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID!;
 const WHATSAPP_APP_SECRET = process.env.WHATSAPP_APP_SECRET!;
 
-const GRAPH_API_URL = "https://graph.facebook.com/v20.0";
+const GRAPH_API_URL = "https://graph.facebook.com/v25.0";
+
+/**
+ * Normalize Mexican phone numbers for WhatsApp Cloud API.
+ * Incoming webhook messages use format: 5218xxxxxxxxx (10-digit with extra 1)
+ * But the API / test recipient list expects: 52xxxxxxxxxx
+ * Strip the '1' after country code 52 if the total length is 13 digits.
+ */
+function normalizeMexicanNumber(phone: string): string {
+  // 521 + 10 digits = 13 chars → strip the 1 → 52 + 10 digits = 12 chars
+  if (phone.startsWith("521") && phone.length === 13) {
+    return "52" + phone.slice(3);
+  }
+  return phone;
+}
 
 // ============================================
 // Send Messages
@@ -19,7 +33,9 @@ export async function sendTextMessage(
   to: string,
   text: string
 ): Promise<boolean> {
+  const normalizedTo = normalizeMexicanNumber(to);
   try {
+    console.log(`📤 Sending to ${normalizedTo} (original: ${to})`);
     const response = await fetch(
       `${GRAPH_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
@@ -30,7 +46,7 @@ export async function sendTextMessage(
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
-          to,
+          to: normalizedTo,
           type: "text",
           text: { body: text },
         }),
