@@ -108,6 +108,40 @@ function buildMessageHistory(messages: Message[]): { role: "user" | "assistant";
 // Main Response Generator
 // ============================================
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Retry con backoff cuando Groq devuelve 429 (rate limit)
+async function callGroqWithRetry(
+  messages: { role: "system" | "user" | "assistant"; content: string }[],
+  retries = 3
+): Promise<string> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const completion = await groq.chat.completions.create({
+        model: "llama-3.1-8b-instant", // Mayor límite de tasa en plan gratuito
+        messages,
+        temperature: 0.65,
+        max_tokens: 1024,
+        response_format: { type: "json_object" },
+      });
+      return completion.choices[0]?.message?.content || "";
+    } catch (err: unknown) {
+      const error = err as { status?: number; message?: string };
+      const is429 = error?.status === 429 || String(error?.message).includes("429");
+
+      if (is429 && attempt < retries) {
+        const wait = attempt * 3000; // 3s, 6s, 9s
+        console.warn(`⚠️ Groq 429 rate limit — reintentando en ${wait / 1000}s (intento ${attempt}/${retries})`);
+        await sleep(wait);
+        continue;
+      }
+
+      throw err; // otros errores o último reintento
+    }
+  }
+  throw new Error("Groq: máximo de reintentos alcanzado");
+}
+
 export async function generateResponse(
   userMessage: string,
   products: Product[],
@@ -130,31 +164,23 @@ RECUERDA: Solo usa la información del catálogo y las FAQs. Si el cliente pregu
   const history = buildMessageHistory(recentMessages);
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "system", content: contextMessage },
-        ...history,
-        { role: "user", content: userMessage },
-      ],
-      temperature: 0.65, // Balanceado: natural y conversacional sin alucinar
-      max_tokens: 1024,
-      response_format: { type: "json_object" },
-    });
-
-    const rawResponse = completion.choices[0]?.message?.content || "";
+    const rawResponse = await callGroqWithRetry([
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: contextMessage },
+      ...history,
+      { role: "user", content: userMessage },
+    ]);
 
     try {
       const parsed = JSON.parse(rawResponse) as AIResponse;
       return {
-        message: parsed.message || "Disculpa, tuve un problema generando la respuesta. ¿Podrías repetir tu pregunta?",
+        message: parsed.message || "Disculpa, ¿podrías repetir tu pregunta? 😊",
         intent: parsed.intent || "browsing",
         products_mentioned: parsed.products_mentioned || [],
       };
     } catch {
       return {
-        message: rawResponse || "Disculpa, tuve un problema. ¿Podrías repetir tu pregunta?",
+        message: rawResponse || "Disculpa, ¿podrías repetir tu pregunta?",
         intent: "browsing",
         products_mentioned: [],
       };
@@ -162,7 +188,7 @@ RECUERDA: Solo usa la información del catálogo y las FAQs. Si el cliente pregu
   } catch (error) {
     console.error("Groq API error:", error);
     return {
-      message: "Disculpa, estoy teniendo problemas técnicos en este momento. Por favor intenta de nuevo en unos segundos, o visítanos directamente en tienda. 🙏",
+      message: "Uy, tuve un problema técnico ahorita 😅 ¿Me lo repites en un momento? Si urge, puedes llamarnos al 811 600 7619 o al 844 273 9524.",
       intent: "support",
       products_mentioned: [],
     };
