@@ -5,6 +5,9 @@ import type { WhatsAppWebhookPayload } from "../../../lib/types";
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "default_verify_token";
 
+// Allow up to 60 seconds for Groq AI + WhatsApp API calls
+export const maxDuration = 60;
+
 // ============================================
 // GET — Webhook Verification (Meta handshake)
 // ============================================
@@ -41,11 +44,12 @@ export async function POST(request: NextRequest) {
 
     const payload: WhatsAppWebhookPayload = JSON.parse(rawBody);
 
-    // Acknowledge receipt immediately (WhatsApp expects fast 200)
-    // Process the message asynchronously
-    // Using void to not await — the response goes back immediately
-    void handleIncomingMessage(payload).catch((error) => {
-      console.error("Background message processing error:", error);
+    // CRITICAL FIX: await the full pipeline so Vercel doesn't terminate
+    // the serverless function before Groq AI and WhatsApp send calls complete.
+    // Previously used `void` which caused the function to exit immediately after
+    // returning 200, cutting off all async processing.
+    await handleIncomingMessage(payload).catch((error) => {
+      console.error("Message processing error:", error);
     });
 
     return NextResponse.json({ status: "ok" }, { status: 200 });
