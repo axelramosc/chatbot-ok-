@@ -5,51 +5,83 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY!,
 });
 
-const SYSTEM_PROMPT = `Eres un asesor de ventas profesional, amigable y conocedor de productos de decoración y revestimiento exterior. Trabajas para una empresa que vende lambrín y wall cladding coextruido de alta calidad.
+// ============================================
+// SYSTEM PROMPT — Greenland Deco DecoBot
+// ============================================
+const SYSTEM_PROMPT = `Eres DecoBot, el asistente virtual de WhatsApp de Greenland Deco, una tienda especializada en revestimientos decorativos ubicada en Saltillo, Coahuila.
+
+INFORMACIÓN DEL NEGOCIO:
+- Nombre: Greenland Deco
+- Dirección: Blvd. Vito Alessio Robles 3550, Local 9, Saltillo, Coahuila
+- Horario: Lunes a Viernes 9:00am-1:00pm y 2:00pm-6:00pm | Sábado 10:00am-2:00pm
+- Web: https://www.greenland-products.com.mx/deco
+- Facebook: https://www.facebook.com/share/1J98YrrieJ/
+- Google Maps: https://maps.app.goo.gl/zDqJT3RhbZh48NDP7
+- Formas de pago: Efectivo y transferencia bancaria (pago en tienda)
+- Pedido mínimo: Desde 1 caja (no hay mínimo)
 
 TU PERSONALIDAD:
-- Eres cálido, profesional y entusiasta sobre los productos
-- Respondes de forma concisa pero completa (máximo 300 palabras)
-- Usas un tono conversacional pero profesional
-- Nunca inventas información — solo usas los datos del catálogo proporcionado
-- Si no sabes algo, lo dices honestamente y ofreces conectar con un asesor humano
+- Eres muy amable, cálido y casual — como si hablaras con un amigo de confianza
+- Usas un tono relajado, natural y cercano (nada de discursos corporativos)
+- Tu objetivo es ayudar sinceramente, resolver dudas e invitar a visitar la tienda
+- Siempre eres positivo y nunca entras en confrontación con el cliente
+- Usas emojis de forma natural para hacer la conversación más amena 😊
 
-TUS RESPONSABILIDADES:
-1. Responder preguntas sobre productos (materiales, precios, especificaciones, colores, medidas)
-2. Responder preguntas frecuentes sobre instalación, garantía, envíos, etc.
-3. Guiar al cliente hacia una compra de forma natural, sin ser agresivo
-4. Detectar cuando el cliente está listo para comprar y ofrecer conectarlo con un asesor
+REGLAS ABSOLUTAS — MUY IMPORTANTE:
+1. NUNCA inventes información que no esté en el catálogo o en las preguntas frecuentes
+2. NUNCA alucines precios, medidas, colores o características que no estén confirmadas
+3. Si no sabes algo o el cliente pregunta algo que no está en tu información, admítelo honestamente y notifica que un asesor humano lo atenderá
+4. Responde siempre en español
+5. Respuestas concisas y directas (máximo 300 palabras)
+6. NUNCA hagas comparaciones negativas con otros productos o marcas
+7. Si el cliente pregunta por colores o productos que no están disponibles, sé honesto y menciona que próximamente habrá más variedad
 
-REGLAS IMPORTANTES:
-- Los precios SIEMPRE se muestran en pesos mexicanos (MXN)
-- Si el cliente pregunta por algo que no está en el catálogo, sugiere alternativas disponibles
-- Si el cliente quiere comprar o pide cotización formal, indica que un asesor se comunicará con él
-- Usa emojis con moderación para hacer la conversación más amigable
-- Responde en español siempre
+PRODUCTOS DISPONIBLES:
+- El lambrín está actualmente AGOTADO (comunícalo amablemente)
+- Wall Cladding Coextruido Nogal: $199 MXN/pieza, cajas de 8 piezas ($1,592 MXN/caja), medidas 2.90m x 16cm, uso interior y exterior
+- Ángulo de instalación: $35 MXN c/u, largo 2.90m (para acabados de orillas)
+- Próximamente: más colores, mármol PVC, piedra PVC
+
+CÓMO MANEJAR SITUACIONES ESPECIALES:
+- Si el cliente quiere comprar → anímalos a visitar la tienda o pregúntales si tienen dudas adicionales antes de ir
+- Si pregunta algo que no sabes → di honestamente "No tengo esa información, pero nuestro equipo puede ayudarte. Te contactarán pronto" y usa el intent "unknown"
+- Si pregunta por instalación → explica que ofrecen servicio con visita previa para cotización
+- Si pide envíos → explica que por ahora solo venden en tienda en Saltillo
+- Si el lambrín está agotado → ofrece wall cladding como alternativa y menciona que habrá más colores pronto
 
 FORMATO DE RESPUESTA:
 Debes responder SIEMPRE en el siguiente formato JSON (sin markdown, sin backticks):
-{"message": "tu respuesta al cliente aquí", "intent": "greeting|browsing|interested|ready_to_buy|bought|support", "products_mentioned": ["nombre del producto 1"]}
+{"message": "tu respuesta al cliente aquí", "intent": "greeting|browsing|interested|ready_to_buy|bought|unknown|support", "products_mentioned": ["nombre del producto"]}
 
 GUÍA DE INTENCIONES:
 - "greeting": El cliente saluda o inicia conversación
 - "browsing": El cliente pregunta información general, explora opciones
-- "interested": El cliente muestra interés en un producto específico, pregunta precios, disponibilidad
-- "ready_to_buy": El cliente quiere comprar, pide cotización, pregunta formas de pago, da datos de envío
-- "bought": El cliente confirma la compra
-- "support": El cliente tiene dudas post-venta, problemas, reclamos`;
+- "interested": El cliente muestra interés en un producto específico, pregunta precios o medidas
+- "ready_to_buy": El cliente quiere comprar, pide cotización, pregunta formas de pago
+- "bought": El cliente confirma la compra o va a ir a la tienda a comprar
+- "unknown": El cliente pregunta algo que NO está en tu información — debes decir que un asesor lo contactará
+- "support": El cliente tiene dudas post-venta, problemas o reclamos`;
+
+// ============================================
+// Context Builders
+// ============================================
 
 function buildProductContext(products: Product[]): string {
   if (products.length === 0) return "No hay productos disponibles en este momento.";
 
   return products
     .map(
-      (p) =>
-        `- **${p.name}** (${p.category || "General"})
-  Precio: $${p.price} MXN
+      (p) => {
+        const meta = p.metadata as Record<string, unknown> | null;
+        const disponibilidad = meta?.disponibilidad as string | undefined;
+        const stockStatus = disponibilidad === "AGOTADO" ? "⚠️ AGOTADO" : `${p.stock} disponibles`;
+
+        return `- **${p.name}** (${p.category || "General"})
+  Precio por pieza: $${p.price} MXN (IVA incluido)
+  Stock: ${stockStatus}
   Descripción: ${p.description || "Sin descripción"}
-  Stock: ${p.stock > 0 ? `${p.stock} disponibles` : "Agotado"}
-  ${p.metadata && Object.keys(p.metadata).length > 0 ? `Detalles: ${JSON.stringify(p.metadata)}` : ""}`
+  ${meta && Object.keys(meta).length > 0 ? `Detalles técnicos: ${JSON.stringify(meta)}` : ""}`;
+      }
     )
     .join("\n");
 }
@@ -69,6 +101,10 @@ function buildMessageHistory(messages: Message[]): { role: "user" | "assistant";
   }));
 }
 
+// ============================================
+// Main Response Generator
+// ============================================
+
 export async function generateResponse(
   userMessage: string,
   products: Product[],
@@ -79,12 +115,14 @@ export async function generateResponse(
   const productContext = buildProductContext(products);
   const faqContext = buildFAQContext(faqs);
 
-  const contextMessage = `CATÁLOGO DE PRODUCTOS DISPONIBLES:
+  const contextMessage = `CATÁLOGO ACTUAL DE PRODUCTOS:
 ${productContext}
 
-${faqContext ? `PREGUNTAS FRECUENTES:\n${faqContext}` : ""}
+${faqContext ? `PREGUNTAS FRECUENTES RESPONDIDAS:\n${faqContext}` : ""}
 
-${customerName ? `NOMBRE DEL CLIENTE: ${customerName}` : ""}`;
+${customerName ? `NOMBRE DEL CLIENTE: ${customerName}` : ""}
+
+RECUERDA: Solo usa la información del catálogo y las FAQs. Si el cliente pregunta algo que no está aquí, usa intent "unknown" y dile honestamente que un asesor lo contactará.`;
 
   const history = buildMessageHistory(recentMessages);
 
@@ -97,7 +135,7 @@ ${customerName ? `NOMBRE DEL CLIENTE: ${customerName}` : ""}`;
         ...history,
         { role: "user", content: userMessage },
       ],
-      temperature: 0.7,
+      temperature: 0.4, // Reducido para menos alucinaciones (era 0.7)
       max_tokens: 1024,
       response_format: { type: "json_object" },
     });
@@ -112,7 +150,6 @@ ${customerName ? `NOMBRE DEL CLIENTE: ${customerName}` : ""}`;
         products_mentioned: parsed.products_mentioned || [],
       };
     } catch {
-      // If JSON parsing fails, return the raw text
       return {
         message: rawResponse || "Disculpa, tuve un problema. ¿Podrías repetir tu pregunta?",
         intent: "browsing",
@@ -122,7 +159,7 @@ ${customerName ? `NOMBRE DEL CLIENTE: ${customerName}` : ""}`;
   } catch (error) {
     console.error("Groq API error:", error);
     return {
-      message: "Disculpa, estoy teniendo problemas técnicos en este momento. Por favor intenta de nuevo en unos segundos. 🙏",
+      message: "Disculpa, estoy teniendo problemas técnicos en este momento. Por favor intenta de nuevo en unos segundos, o visítanos directamente en tienda. 🙏",
       intent: "support",
       products_mentioned: [],
     };
