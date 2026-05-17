@@ -33,7 +33,10 @@ export default function SettingsPage() {
     setLoadingBusiness(true);
     const { data } = await supabase.from("business_settings").select("*");
     if (data) {
-      const settingsMap = data.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {});
+      const settingsMap = data.reduce((acc, row) => ({ ...acc, [row.key]: row.value }), {} as Record<string, string>);
+      if (!settingsMap["sales_agent_numbers"]) {
+        settingsMap["sales_agent_numbers"] = "528441757500";
+      }
       setBusinessSettings(settingsMap);
     }
     setLoadingBusiness(false);
@@ -147,11 +150,12 @@ export default function SettingsPage() {
               {Object.entries(businessSettings).map(([key, value]) => (
                 <div key={key}>
                   <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: "600", textTransform: "capitalize" }}>
-                    {key.replace("_", " ")}
+                    {key === 'sales_agent_numbers' ? "Teléfonos de Asesores (separados por coma)" : key.replace("_", " ")}
                   </label>
-                  {value.length > 50 || key === 'hours' || key === 'payment_methods' || key === 'extra_info' ? (
+                  {value.length > 50 || key === 'hours' || key === 'payment_methods' || key === 'extra_info' || key === 'sales_agent_numbers' ? (
                     <textarea 
                       value={value}
+                      placeholder={key === 'sales_agent_numbers' ? "528441757500, 528441757501" : ""}
                       onChange={(e) => handleBusinessChange(key, e.target.value)}
                       style={{ width: "100%", padding: "0.75rem", border: "1px solid var(--border-color)", borderRadius: "8px", minHeight: "80px" }}
                     />

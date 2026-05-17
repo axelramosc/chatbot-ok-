@@ -1,8 +1,20 @@
 import { sendTextMessage } from "./whatsapp";
-import { createSalesLead, updateSalesLeadStatus } from "./database";
+import { createSalesLead, updateSalesLeadStatus, getBusinessSettings } from "./database";
 
-// Tu número personal de WhatsApp para recibir alertas
-const ADMIN_WHATSAPP_NUMBER = process.env.ADMIN_WHATSAPP_NUMBER || "";
+// Tu número personal de WhatsApp para recibir alertas (Fallback fallback si la DB falla)
+const FALLBACK_ADMIN_NUMBER = process.env.ADMIN_WHATSAPP_NUMBER || "";
+
+async function getAdminNumbers(): Promise<string[]> {
+  try {
+    const settings = await getBusinessSettings();
+    if (settings && settings["sales_agent_numbers"]) {
+      return settings["sales_agent_numbers"].split(",").map((n: string) => n.trim()).filter((n: string) => n.length > 0);
+    }
+  } catch (error) {
+    console.error("Error fetching sales_agent_numbers from DB, using fallback", error);
+  }
+  return FALLBACK_ADMIN_NUMBER ? [FALLBACK_ADMIN_NUMBER] : [];
+}
 
 // ============================================
 // Notificación de Venta / Cliente Potencial
@@ -17,8 +29,9 @@ interface SaleNotificationData {
 }
 
 export async function notifyAdminOfSale(data: SaleNotificationData): Promise<void> {
-  if (!ADMIN_WHATSAPP_NUMBER) {
-    console.error("ADMIN_WHATSAPP_NUMBER not configured");
+  const numbers = await getAdminNumbers();
+  if (numbers.length === 0) {
+    console.error("No admin numbers configured to receive sale notification");
     return;
   }
 
@@ -41,13 +54,17 @@ export async function notifyAdminOfSale(data: SaleNotificationData): Promise<voi
       `💬 *Resumen de la conversación:*\n${data.conversationSummary.substring(0, 400)}\n\n` +
       `⚡ Te recomiendo contactarlo pronto para cerrar la venta.`;
 
-    const sent = await sendTextMessage(ADMIN_WHATSAPP_NUMBER, message);
+    let anySent = false;
+    for (const num of numbers) {
+      const sent = await sendTextMessage(num, message);
+      if (sent) anySent = true;
+    }
 
-    if (sent) {
+    if (anySent) {
       await updateSalesLeadStatus(lead.id, "notified", true);
-      console.log(`✅ Admin notified of sale lead ${lead.id}`);
+      console.log(`✅ Admins notified of sale lead ${lead.id}`);
     } else {
-      console.error(`❌ Failed to notify admin of sale lead ${lead.id}`);
+      console.error(`❌ Failed to notify any admin of sale lead ${lead.id}`);
     }
   } catch (error) {
     console.error("Error notifying admin of sale:", error);
@@ -67,8 +84,9 @@ interface UnknownQueryData {
 }
 
 export async function notifyAdminOfUnknownQuery(data: UnknownQueryData): Promise<void> {
-  if (!ADMIN_WHATSAPP_NUMBER) {
-    console.error("ADMIN_WHATSAPP_NUMBER not configured");
+  const numbers = await getAdminNumbers();
+  if (numbers.length === 0) {
+    console.error("No admin numbers configured to receive unknown query notification");
     return;
   }
 
@@ -81,13 +99,10 @@ export async function notifyAdminOfUnknownQuery(data: UnknownQueryData): Promise
       `💬 *Contexto de la conversación:*\n${data.conversationSummary.substring(0, 300)}\n\n` +
       `👆 Este cliente necesita atención personal. ¡Contáctalo cuando puedas!`;
 
-    const sent = await sendTextMessage(ADMIN_WHATSAPP_NUMBER, message);
-
-    if (sent) {
-      console.log(`✅ Admin notified of unknown query from ${data.phoneNumber}`);
-    } else {
-      console.error(`❌ Failed to notify admin of unknown query from ${data.phoneNumber}`);
+    for (const num of numbers) {
+      await sendTextMessage(num, message);
     }
+    console.log(`✅ Admins notified of unknown query from ${data.phoneNumber}`);
   } catch (error) {
     console.error("Error notifying admin of unknown query:", error);
   }
