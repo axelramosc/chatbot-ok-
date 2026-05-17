@@ -153,7 +153,28 @@ export async function handleIncomingMessage(
   } catch (error) {
     console.error(`❌ Error handling message from ${from}:`, error);
 
-    // Enviar mensaje de error al cliente
+    // Check if this conversation is being handled by admin before sending error message.
+    // If admin has control, stay silent — don't confuse the client with bot error messages.
+    try {
+      const supabase = getSupabase();
+      const { data: convRows } = await supabase
+        .from("conversations")
+        .select("status")
+        .eq("phone_number", from)
+        .not("status", "eq", "closed")
+        .order("updated_at", { ascending: false })
+        .limit(1);
+
+      const status = convRows?.[0]?.status;
+      if (status === "attended" || status === "sale_completed" || status === "closed") {
+        console.log(`🤫 Error occurred but conversation is ${status} — staying silent.`);
+        return;
+      }
+    } catch {
+      // If we can't check, fall through to send error message
+    }
+
+    // Only send error message if bot is actively handling the conversation
     await sendTextMessage(
       from,
       "Disculpa, tuve un pequeño problema procesando tu mensaje 😅 Por favor intenta de nuevo en unos segundos, o visítanos directamente en tienda. ¡Con gusto te atendemos!"
