@@ -10,34 +10,10 @@ export async function POST(request: Request) {
     }
 
     // 1. Send the message via WhatsApp Cloud API
-    const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-    const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    const { sendTextMessage } = await import("../../../lib/whatsapp");
+    const success = await sendTextMessage(phone_number, content);
 
-    const response = await fetch(
-      `https://graph.facebook.com/v21.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: phone_number,
-          type: "text",
-          text: {
-            preview_url: false,
-            body: content,
-          },
-        }),
-      }
-    );
-
-    const whatsappData = await response.json();
-
-    if (!response.ok) {
-      console.error("WhatsApp API Error:", whatsappData);
+    if (!success) {
       return NextResponse.json({ error: "Failed to send WhatsApp message" }, { status: 500 });
     }
 
@@ -49,7 +25,7 @@ export async function POST(request: Request) {
       content: `[ADMIN] ${content}`, // Prefix so we know it was sent by human
       message_type: "text",
       // wa_message_id is not strictly required, but we can save it if we want
-      wa_message_id: whatsappData.messages?.[0]?.id || `admin-${Date.now()}`
+      wa_message_id: `admin-${Date.now()}`
     });
 
     if (dbError) {
