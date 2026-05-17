@@ -8,6 +8,7 @@ import {
   isMessageProcessed,
   updateConversationStatus,
 } from "./database";
+import { getSupabase } from "./supabase";
 import { generateResponse } from "./ai";
 import { notifyAdminOfSale, notifyAdminOfUnknownQuery } from "./notifications";
 import type { WhatsAppWebhookPayload } from "./types";
@@ -52,7 +53,21 @@ export async function handleIncomingMessage(
       return;
     }
 
-    // 5. Obtener contexto en paralelo para velocidad
+    // 5. Re-check conversation status from DB (safety net against race conditions)
+    //    The admin may have set 'attended' after we fetched the conversation above.
+    const supabase = getSupabase();
+    const { data: freshConv } = await supabase
+      .from("conversations")
+      .select("status")
+      .eq("id", conversation.id)
+      .single();
+
+    if (freshConv && (freshConv.status === "attended" || freshConv.status === "sale_completed" || freshConv.status === "closed")) {
+      console.log(`⏭️ Bot paused (re-check). Conversation status is: ${freshConv.status}`);
+      return;
+    }
+
+    // 6. Obtener contexto en paralelo para velocidad
     const [recentMessages, products, faqs] = await Promise.all([
       getRecentMessages(conversation.id, 10),
       getActiveProducts(),

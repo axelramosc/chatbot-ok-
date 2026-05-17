@@ -186,7 +186,7 @@ export default function InboxPage() {
               {selectedConv.status !== 'active' && (
                 <button 
                   onClick={handleReactivateBot}
-                  style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", background: "var(--primary)", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}
+                  style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", background: "#4FC3F7", color: "white", border: "none", borderRadius: "5px", cursor: "pointer" }}
                 >
                   Reactivar Bot (Ava)
                 </button>

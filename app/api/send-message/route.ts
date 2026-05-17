@@ -9,22 +9,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // 1. Send the message via WhatsApp Cloud API
-    const { sendTextMessage } = await import("../../../lib/whatsapp");
-    const success = await sendTextMessage(phone_number, content);
+    const supabase = getSupabase();
 
-    if (!success) {
-      return NextResponse.json({ error: "Failed to send WhatsApp message" }, { status: 500 });
+    // 1. FIRST: Set conversation to 'attended' BEFORE anything else.
+    //    This ensures the bot is paused even if the WhatsApp send fails.
+    const { error: statusError } = await supabase
+      .from("conversations")
+      .update({ status: "attended", updated_at: new Date().toISOString() })
+      .eq("id", conversation_id);
+
+    if (statusError) {
+      console.error("❌ Failed to set attended status:", statusError);
+      return NextResponse.json({ error: "Failed to pause bot" }, { status: 500 });
     }
 
+    console.log(`✅ Conversation ${conversation_id} set to 'attended'`);
+
     // 2. Save the admin message to the database
-    const supabase = getSupabase();
     const { error: dbError } = await supabase.from("messages").insert({
       conversation_id,
-      sender: "bot", // using bot so it displays correctly, could be "admin" if schema allowed
-      content: `[ADMIN] ${content}`, // Prefix so we know it was sent by human
+      sender: "bot",
+      content: `[ADMIN] ${content}`,
       message_type: "text",
-      // wa_message_id is not strictly required, but we can save it if we want
       wa_message_id: `admin-${Date.now()}`
     });
 
@@ -32,8 +38,15 @@ export async function POST(request: Request) {
       console.error("Database Error:", dbError);
     }
 
-    // 3. Update conversation status to 'attended' so the bot stops replying
-    await supabase.from("conversations").update({ status: "attended" }).eq("id", conversation_id);
+    // 3. Send the message via WhatsApp Cloud API
+    const { sendTextMessage } = await import("../../../lib/whatsapp");
+    const success = await sendTextMessage(phone_number, content);
+
+    if (!success) {
+      console.error("❌ WhatsApp send failed, but conversation is already paused");
+      // Don't return error — the bot is paused and the message is saved.
+      // The admin can retry sending later.
+    }
 
     return NextResponse.json({ success: true, message: "Message sent" });
   } catch (error: any) {
