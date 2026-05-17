@@ -1,10 +1,8 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-let _supabase: SupabaseClient | null = null;
-
+// NOTE: No usamos singleton para evitar que el cliente quede "pegado" a credenciales
+// o estado obsoleto entre requests en el entorno serverless de Vercel/Next.js.
 export function getSupabase(): SupabaseClient {
-  if (_supabase) return _supabase;
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -14,28 +12,22 @@ export function getSupabase(): SupabaseClient {
     );
   }
 
-  _supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  // IMPORTANTE: NO agregar parámetros extra (_t, etc.) a la URL de PostgREST.
+  // PostgREST rechaza parámetros de query desconocidos con HTTP 400.
+  // Para evitar el caché de Next.js App Router, basta con cache: "no-store"
+  // + export const dynamic = "force-dynamic" en las rutas de la API.
+  return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
     global: {
       fetch: (url, options) => {
-        // Asegurar que Next.js NUNCA guarde en caché las peticiones de Supabase
-        // Next.js App Router es muy agresivo con el caché de fetch (incluso ignorando no-store).
-        // Al agregar un timestamp, la URL cambia siempre y rompe el caché.
-        const fetchUrl = typeof url === "string" ? url : url.toString();
-        const urlObj = new URL(fetchUrl);
-        urlObj.searchParams.append("_t", Date.now().toString());
-
-        return fetch(urlObj.toString(), {
+        return fetch(url, {
           ...options,
           cache: "no-store",
-          next: { revalidate: 0 },
         });
       },
     },
   });
-
-  return _supabase;
 }
