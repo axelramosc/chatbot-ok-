@@ -20,10 +20,18 @@ export function getSupabase(): SupabaseClient {
       persistSession: false,
     },
     global: {
-      fetch: (...args) => {
-        return fetch(args[0], {
-          ...args[1],
+      fetch: (url, options) => {
+        // Asegurar que Next.js NUNCA guarde en caché las peticiones de Supabase
+        // Next.js App Router es muy agresivo con el caché de fetch (incluso ignorando no-store).
+        // Al agregar un timestamp, la URL cambia siempre y rompe el caché.
+        const fetchUrl = typeof url === "string" ? url : url.toString();
+        const urlObj = new URL(fetchUrl);
+        urlObj.searchParams.append("_t", Date.now().toString());
+
+        return fetch(urlObj.toString(), {
+          ...options,
           cache: "no-store",
+          next: { revalidate: 0 },
         });
       },
     },
