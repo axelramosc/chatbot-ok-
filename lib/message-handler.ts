@@ -45,25 +45,29 @@ export async function handleIncomingMessage(
     // 3. Obtener o crear conversación
     const conversation = await getOrCreateConversation(from, contactName);
 
-    // 4. Guardar mensaje entrante
+    // 4. ALWAYS save the incoming message — even if bot is paused.
+    //    This ensures the CRM dashboard shows every client message.
     await saveMessage(conversation.id, "user", text, messageId);
 
-    if (conversation.status === "attended" || conversation.status === "sale_completed" || conversation.status === "closed") {
-      console.log(`⏭️ Bot paused. Conversation status is: ${conversation.status}`);
-      return;
-    }
-
-    // 5. Re-check conversation status from DB (safety net against race conditions)
-    //    The admin may have set 'attended' after we fetched the conversation above.
+    // 4b. Update conversation timestamp so it bubbles to the top of the CRM list
     const supabase = getSupabase();
+    await supabase
+      .from("conversations")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", conversation.id);
+
+    // 5. Fresh status check from DB (single source of truth).
+    //    The admin may have set 'attended' between getOrCreateConversation and now.
     const { data: freshConv } = await supabase
       .from("conversations")
       .select("status")
       .eq("id", conversation.id)
       .single();
 
-    if (freshConv && (freshConv.status === "attended" || freshConv.status === "sale_completed" || freshConv.status === "closed")) {
-      console.log(`⏭️ Bot paused (re-check). Conversation status is: ${freshConv.status}`);
+    const currentStatus = freshConv?.status || conversation.status;
+
+    if (currentStatus === "attended" || currentStatus === "sale_completed" || currentStatus === "closed") {
+      console.log(`⏭️ Bot paused. Conversation ${conversation.id} status is: ${currentStatus}. Message saved for CRM.`);
       return;
     }
 
@@ -74,7 +78,7 @@ export async function handleIncomingMessage(
       getActiveFAQs(),
     ]);
 
-    // 6. Generar respuesta con IA
+    // 7. Generar respuesta con IA
     const aiResponse = await generateResponse(
       text,
       products,
@@ -85,10 +89,23 @@ export async function handleIncomingMessage(
 
     console.log(`🤖 Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
 
-    // 7. Guardar respuesta del bot
+    // 8. SECOND status check — guard against admin taking control during AI generation.
+    //    The AI call can take several seconds; admin may have paused in the meantime.
+    const { data: recheckConv } = await supabase
+      .from("conversations")
+      .select("status")
+      .eq("id", conversation.id)
+      .single();
+
+    if (recheckConv && (recheckConv.status === "attended" || recheckConv.status === "sale_completed" || recheckConv.status === "closed")) {
+      console.log(`⏭️ Bot paused (post-AI check). Status: ${recheckConv.status}. Discarding AI response.`);
+      return;
+    }
+
+    // 9. Guardar respuesta del bot
     await saveMessage(conversation.id, "bot", aiResponse.message);
 
-    // 8. Enviar respuesta al cliente vía WhatsApp
+    // 10. Enviar respuesta al cliente vía WhatsApp
     const sent = await sendTextMessage(from, aiResponse.message);
 
     if (!sent) {

@@ -10,15 +10,19 @@ export async function getOrCreateConversation(
   customerName?: string
 ): Promise<Conversation> {
   const supabase = getSupabase();
-  // Try to find existing active conversation
+  // Try to find ANY existing non-closed conversation for this phone number.
+  // We include ALL statuses except 'closed' so that:
+  //  - 'attended' conversations are reused (bot stays paused)
+  //  - 'sale_completed' conversations are reused (bot stays paused)
+  //  - No duplicate conversations are created while admin has control
   const { data: existing } = await supabase
     .from("conversations")
     .select("*")
     .eq("phone_number", phoneNumber)
-    .in("status", ["active", "sale_pending", "attended"])
-    .order("created_at", { ascending: false })
+    .not("status", "eq", "closed")
+    .order("updated_at", { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     // Update customer name if we have it now and didn't before

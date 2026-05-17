@@ -155,13 +155,19 @@ export default function InboxPage() {
             <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
               <span>{new Date(conv.updated_at).toLocaleDateString()}</span>
               <span style={{ 
-                background: conv.status === 'active' ? 'var(--primary)' : 'var(--text-muted)',
+                background: conv.status === 'active' ? '#4CAF50' 
+                  : conv.status === 'attended' ? '#FF9800' 
+                  : conv.status === 'sale_pending' ? '#2196F3'
+                  : '#9E9E9E',
                 color: 'white',
                 padding: '2px 6px',
                 borderRadius: '10px',
                 fontSize: '0.7rem'
               }}>
-                {conv.status}
+                {conv.status === 'active' ? '🤖 Bot activo' 
+                  : conv.status === 'attended' ? '👤 Admin' 
+                  : conv.status === 'sale_pending' ? '🛒 Venta'
+                  : conv.status}
               </span>
             </div>
           </div>
@@ -193,20 +199,53 @@ export default function InboxPage() {
               )}
             </div>
 
+            {/* Attended Banner */}
+            {selectedConv.status === 'attended' && (
+              <div style={{ 
+                padding: "0.6rem 1.5rem", 
+                background: "linear-gradient(90deg, #FF9800, #F57C00)", 
+                color: "white", 
+                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem"
+              }}>
+                ⚠️ <strong>Ava está pausada.</strong> Estás atendiendo esta conversación manualmente. Los mensajes del cliente aparecen aquí.
+              </div>
+            )}
+
             {/* Mensajes */}
             <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
               {messages.map((msg) => {
-                const isBot = msg.sender === "bot";
+                const isAdmin = msg.sender === "bot" && msg.content.startsWith("[ADMIN]");
+                const isBot = msg.sender === "bot" && !isAdmin;
+                const isUser = msg.sender === "user";
+                
+                // Display content: strip [ADMIN] prefix for cleaner display
+                const displayContent = isAdmin ? msg.content.replace("[ADMIN] ", "") : msg.content;
+                
                 return (
                   <div key={msg.id} style={{ 
-                    alignSelf: isBot ? "flex-start" : "flex-end",
-                    background: isBot ? "var(--chat-bubble-bot)" : "var(--chat-bubble-user)",
+                    alignSelf: isUser ? "flex-end" : "flex-start",
+                    background: isAdmin ? "#FFF3E0" 
+                      : isBot ? "var(--chat-bubble-bot, #F5F5F5)" 
+                      : "var(--chat-bubble-user, #DCF8C6)",
+                    border: isAdmin ? "1px solid #FFB74D" : "none",
                     padding: "0.75rem 1rem",
                     borderRadius: "8px",
                     maxWidth: "70%",
                     boxShadow: "0 1px 2px rgba(0,0,0,0.1)"
                   }}>
-                    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{msg.content}</div>
+                    {/* Sender label */}
+                    <div style={{ 
+                      fontSize: "0.65rem", 
+                      fontWeight: "bold",
+                      color: isAdmin ? "#E65100" : isBot ? "#1565C0" : "#2E7D32",
+                      marginBottom: "2px"
+                    }}>
+                      {isAdmin ? "👤 Admin" : isBot ? "🤖 Ava" : "💬 Cliente"}
+                    </div>
+                    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{displayContent}</div>
                     <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", textAlign: "right", marginTop: "4px" }}>
                       {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
