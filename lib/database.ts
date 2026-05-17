@@ -15,7 +15,7 @@ export async function getOrCreateConversation(
     .from("conversations")
     .select("*")
     .eq("phone_number", phoneNumber)
-    .in("status", ["active", "sale_pending"])
+    .in("status", ["active", "sale_pending", "attended"])
     .order("created_at", { ascending: false })
     .limit(1)
     .single();

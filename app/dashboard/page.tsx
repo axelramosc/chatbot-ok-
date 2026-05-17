@@ -15,25 +15,15 @@ export default function InboxPage() {
   useEffect(() => {
     fetchConversations();
     
-    // Subscribe to new messages
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          fetchConversations(); // refresh list to bump active conv
-          if (selectedConv && payload.new.conversation_id === selectedConv.id) {
-            setMessages((prev) => [...prev, payload.new]);
-            scrollToBottom();
-          }
-        }
-      )
-      .subscribe();
+    // Polling ("mini pulso") cada 3 segundos
+    const intervalId = setInterval(() => {
+      fetchConversations();
+      if (selectedConv) {
+        fetchMessages(selectedConv.id, true);
+      }
+    }, 3000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(intervalId);
   }, [selectedConv]);
 
   const fetchConversations = async () => {
@@ -47,7 +37,7 @@ export default function InboxPage() {
     }
   };
 
-  const fetchMessages = async (convId: string) => {
+  const fetchMessages = async (convId: string, silent = false) => {
     const { data } = await supabase
       .from("messages")
       .select("*")
@@ -55,8 +45,16 @@ export default function InboxPage() {
       .order("created_at", { ascending: true });
       
     if (data) {
-      setMessages(data);
-      setTimeout(scrollToBottom, 100);
+      setMessages(prev => {
+        // Solo hacer scroll si hay mensajes nuevos y no es el primer render
+        if (silent && prev.length > 0 && data.length > prev.length) {
+          setTimeout(scrollToBottom, 100);
+        }
+        return data;
+      });
+      if (!silent) {
+        setTimeout(scrollToBottom, 100);
+      }
     }
   };
 
@@ -76,6 +74,22 @@ export default function InboxPage() {
     setSending(true);
     const content = inputText.trim();
     setInputText("");
+
+    // Update conversation status to attended locally
+    const updatedConv = { ...selectedConv, status: 'attended' };
+    setSelectedConv(updatedConv);
+    setConversations(prev => prev.map(c => c.id === updatedConv.id ? updatedConv : c));
+
+    // Optimistic message update
+    const optimisticMsg = {
+      id: `temp-${Date.now()}`,
+      conversation_id: selectedConv.id,
+      sender: "bot",
+      content: `[ADMIN] ${content}`,
+      created_at: new Date().toISOString()
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+    setTimeout(scrollToBottom, 100);
 
     try {
       await fetch("/api/send-message", {
