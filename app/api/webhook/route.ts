@@ -7,6 +7,7 @@ const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "default_verify_token"
 
 // Allow up to 60 seconds for Groq AI + WhatsApp API calls
 export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
 
 // ============================================
 // GET — Webhook Verification (Meta handshake)

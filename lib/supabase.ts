@@ -19,6 +19,14 @@ export function getSupabase(): SupabaseClient {
       autoRefreshToken: false,
       persistSession: false,
     },
+    global: {
+      fetch: (...args) => {
+        return fetch(args[0], {
+          ...args[1],
+          cache: "no-store",
+        });
+      },
+    },
   });
 
   return _supabase;
