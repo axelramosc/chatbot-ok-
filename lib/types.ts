@@ -80,7 +80,7 @@ export interface Conversation {
   id: string;
   phone_number: string;
   customer_name: string | null;
-  status: "active" | "sale_pending" | "sale_completed" | "closed";
+  status: "active" | "sale_pending" | "sale_completed" | "closed" | "attended";
   context: Record<string, unknown>;
   created_at: string;
   updated_at: string;
