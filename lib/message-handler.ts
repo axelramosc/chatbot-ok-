@@ -5,6 +5,8 @@ import {
   getRecentMessages,
   getActiveProducts,
   getActiveFAQs,
+  getBusinessSettings,
+  getKnowledgeFragments,
   isMessageProcessed,
   updateConversationStatus,
 } from "./database";
@@ -42,41 +44,79 @@ export async function handleIncomingMessage(
   }
 
   try {
-    // 3. Obtener o crear conversación
-    const conversation = await getOrCreateConversation(from, contactName);
+    // 3. Obtener o crear conversación (con fallback)
+    let conversation;
+    try {
+      conversation = await getOrCreateConversation(from, contactName);
+    } catch (e) {
+      console.error(`⚠️ Database error getting conversation for ${from}:`, e);
+      // Fallback minimal conversation to keep the bot running
+      conversation = {
+        id: "fallback-id",
+        phone_number: from,
+        customer_name: contactName || null,
+        status: "active",
+        context: {},
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    }
 
-    // 4. ALWAYS save the incoming message — even if bot is paused.
-    //    This ensures the CRM dashboard shows every client message.
-    await saveMessage(conversation.id, "user", text, messageId);
+    // 4. ALWAYS save the incoming message — non-critical
+    try {
+      await saveMessage(conversation.id, "user", text, messageId);
 
-    // 4b. Update conversation timestamp so it bubbles to the top of the CRM list
-    const supabase = getSupabase();
-    await supabase
-      .from("conversations")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", conversation.id);
+      const supabase = getSupabase();
+      await supabase
+        .from("conversations")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", conversation.id);
+    } catch (e) {
+      console.warn(`⚠️ Non-critical error saving incoming message:`, e);
+    }
 
-    // 5. Fresh status check from DB (single source of truth).
-    //    The admin may have set 'attended' between getOrCreateConversation and now.
-    const { data: freshConv } = await supabase
-      .from("conversations")
-      .select("status")
-      .eq("id", conversation.id)
-      .single();
-
-    const currentStatus = freshConv?.status || conversation.status;
+    // 5. Fresh status check from DB (non-critical)
+    let currentStatus = conversation.status;
+    try {
+      const supabase = getSupabase();
+      const { data: freshConv } = await supabase
+        .from("conversations")
+        .select("status")
+        .eq("id", conversation.id)
+        .single();
+      currentStatus = freshConv?.status || conversation.status;
+    } catch (e) {
+      console.warn(`⚠️ Non-critical error checking conversation status:`, e);
+    }
 
     if (currentStatus === "attended" || currentStatus === "sale_completed" || currentStatus === "closed") {
-      console.log(`⏭️ Bot paused. Conversation ${conversation.id} status is: ${currentStatus}. Message saved for CRM.`);
+      console.log(`⏭️ Bot paused. Conversation ${conversation.id} status is: ${currentStatus}.`);
       return;
     }
 
-    // 6. Obtener contexto en paralelo para velocidad
-    const [recentMessages, products, faqs] = await Promise.all([
-      getRecentMessages(conversation.id, 10),
-      getActiveProducts(),
-      getActiveFAQs(),
-    ]);
+    // 6. Obtener contexto en paralelo (non-critical)
+    let recentMessages: any[] = [];
+    let products: any[] = [];
+    let faqs: any[] = [];
+    let businessSettings: Record<string, string> = {};
+    let knowledgeFragments: any[] = [];
+
+    try {
+      const [rm, p, f, bs, kf] = await Promise.all([
+        getRecentMessages(conversation.id, 10).catch(e => { console.warn("Error fetching recent messages:", e); return []; }),
+        getActiveProducts().catch(e => { console.warn("Error fetching products:", e); return []; }),
+        getActiveFAQs().catch(e => { console.warn("Error fetching FAQs:", e); return []; }),
+        getBusinessSettings().catch(e => { console.warn("Error fetching business settings:", e); return {}; }),
+        getKnowledgeFragments().catch(e => { console.warn("Error fetching knowledge:", e); return []; }),
+      ]);
+      recentMessages = rm;
+      products = p;
+      faqs = f;
+      businessSettings = bs;
+      knowledgeFragments = kf;
+    } catch (e) {
+      console.warn(`⚠️ Error building AI context:`, e);
+    }
 
     // 7. Generar respuesta con IA
     const aiResponse = await generateResponse(
@@ -84,26 +124,36 @@ export async function handleIncomingMessage(
       products,
       faqs,
       recentMessages,
-      conversation.customer_name || contactName
+      conversation.customer_name || contactName,
+      businessSettings,
+      knowledgeFragments
     );
 
     console.log(`🤖 Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
 
-    // 8. SECOND status check — guard against admin taking control during AI generation.
-    //    The AI call can take several seconds; admin may have paused in the meantime.
-    const { data: recheckConv } = await supabase
-      .from("conversations")
-      .select("status")
-      .eq("id", conversation.id)
-      .single();
+    // 8. SECOND status check (non-critical)
+    try {
+      const supabase = getSupabase();
+      const { data: recheckConv } = await supabase
+        .from("conversations")
+        .select("status")
+        .eq("id", conversation.id)
+        .single();
 
-    if (recheckConv && (recheckConv.status === "attended" || recheckConv.status === "sale_completed" || recheckConv.status === "closed")) {
-      console.log(`⏭️ Bot paused (post-AI check). Status: ${recheckConv.status}. Discarding AI response.`);
-      return;
+      if (recheckConv && (recheckConv.status === "attended" || recheckConv.status === "sale_completed" || recheckConv.status === "closed")) {
+        console.log(`⏭️ Bot paused (post-AI check). Status: ${recheckConv.status}.`);
+        return;
+      }
+    } catch (e) {
+      console.warn(`⚠️ Non-critical error in post-AI status check:`, e);
     }
 
-    // 9. Guardar respuesta del bot
-    await saveMessage(conversation.id, "bot", aiResponse.message);
+    // 9. Guardar respuesta del bot (non-critical)
+    try {
+      await saveMessage(conversation.id, "bot", aiResponse.message);
+    } catch (e) {
+      console.warn(`⚠️ Non-critical error saving bot response:`, e);
+    }
 
     // 10. Enviar respuesta al cliente vía WhatsApp
     const sent = await sendTextMessage(from, aiResponse.message);
@@ -115,43 +165,42 @@ export async function handleIncomingMessage(
 
     console.log(`✅ Response sent to ${from}`);
 
-    // 9. Construir resumen de conversación para notificaciones
-    const allMessages = [...recentMessages, { sender: "user" as const, content: text }, { sender: "bot" as const, content: aiResponse.message }];
-    const summary = allMessages
-      .slice(-6)
-      .map((m) => `${m.sender === "user" ? "Cliente" : "Bot"}: ${m.content}`)
-      .join("\n");
+    // 11. Notificaciones al admin (non-critical)
+    try {
+      const allMessages = [...recentMessages, { sender: "user" as const, content: text }, { sender: "bot" as const, content: aiResponse.message }];
+      const summary = allMessages
+        .slice(-6)
+        .map((m) => `${m.sender === "user" ? "Cliente" : "Bot"}: ${m.content}`)
+        .join("\n");
 
-    // 10. Notificar al admin si es una venta concretada o intención de compra
-    if (SALE_INTENTS.includes(aiResponse.intent)) {
-      console.log(`🛒 Sale intent detected for ${from}! Notifying admin...`);
+      if (SALE_INTENTS.includes(aiResponse.intent)) {
+        console.log(`🛒 Sale intent detected for ${from}! Notifying admin...`);
+        await updateConversationStatus(conversation.id, "sale_pending").catch(e => console.warn("Error updating status:", e));
+        await notifyAdminOfSale({
+          conversationId: conversation.id,
+          phoneNumber: from,
+          customerName: conversation.customer_name || contactName,
+          productsInterested: aiResponse.products_mentioned,
+          conversationSummary: summary,
+        }).catch(e => console.warn("Error notifying sale:", e));
+      }
 
-      await updateConversationStatus(conversation.id, "sale_pending");
-
-      await notifyAdminOfSale({
-        conversationId: conversation.id,
-        phoneNumber: from,
-        customerName: conversation.customer_name || contactName,
-        productsInterested: aiResponse.products_mentioned,
-        conversationSummary: summary,
-      });
-    }
-
-    // 11. Notificar al admin si el bot no pudo responder la pregunta
-    if (UNKNOWN_INTENTS.includes(aiResponse.intent)) {
-      console.log(`❓ Unknown query from ${from} — notifying admin for human followup`);
-
-      await notifyAdminOfUnknownQuery({
-        conversationId: conversation.id,
-        phoneNumber: from,
-        customerName: conversation.customer_name || contactName,
-        question: text,
-        conversationSummary: summary,
-      });
+      if (UNKNOWN_INTENTS.includes(aiResponse.intent)) {
+        console.log(`❓ Unknown query from ${from} — notifying admin...`);
+        await notifyAdminOfUnknownQuery({
+          conversationId: conversation.id,
+          phoneNumber: from,
+          customerName: conversation.customer_name || contactName,
+          question: text,
+          conversationSummary: summary,
+        }).catch(e => console.warn("Error notifying unknown query:", e));
+      }
+    } catch (e) {
+      console.warn(`⚠️ Non-critical error in admin notifications:`, e);
     }
 
   } catch (error) {
-    console.error(`❌ Error handling message from ${from}:`, error);
+    console.error(`❌ Error handling message from ${from}:`, error instanceof Error ? error.stack : JSON.stringify(error));
 
     // Check if this conversation is being handled by admin before sending error message.
     // If admin has control, stay silent — don't confuse the client with bot error messages.

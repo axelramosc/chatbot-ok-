@@ -1,0 +1,5 @@
+{
+    "python.languageServer": "Default",
+    "editor.minimap.enabled": false,
+    "workbench.colorTheme": "Default Dark+"
+}"github.copilot.chat.cli.customAgents.enabled": true

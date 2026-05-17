@@ -62,6 +62,22 @@ export interface Product {
   image_url: string | null;
   is_active: boolean;
   metadata: Record<string, unknown>;
+  unit: string;
+  price_per_box: number | null;
+  pieces_per_box: number | null;
+  coverage_per_piece: number | null;
+  availability: "disponible" | "agotado" | "próximamente";
+  restock_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeFragment {
+  id: string;
+  content: string;
+  topic: string | null;
+  is_active: boolean;
+  supersedes_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,7 +129,7 @@ export interface SalesLead {
 // ============================================
 export interface AIResponse {
   message: string;
-  intent: "browsing" | "interested" | "ready_to_buy" | "bought" | "support" | "greeting";
+  intent: "browsing" | "interested" | "ready_to_buy" | "bought" | "support" | "greeting" | "unknown";
   products_mentioned: string[];
 }
 

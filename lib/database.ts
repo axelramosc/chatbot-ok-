@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabase";
-import type { Conversation, Message, Product, FAQ, SalesLead } from "./types";
+import type { Conversation, Message, Product, FAQ, SalesLead, KnowledgeFragment } from "./types";
 
 // ============================================
 // Conversation Operations
@@ -24,7 +24,8 @@ export async function getOrCreateConversation(
     .limit(1);
 
   if (fetchError) {
-    console.error("❌ Error fetching conversation:", fetchError);
+    console.error("❌ Error fetching conversation:", JSON.stringify(fetchError, null, 2));
+    // Do NOT throw here; let the logic proceed to create a new conversation if existing is null
   }
 
   const existing = rows && rows.length > 0 ? rows[0] : null;
@@ -230,4 +231,93 @@ export async function updateSalesLeadStatus(
     .from("sales_leads")
     .update(update)
     .eq("id", leadId);
+}
+
+// ============================================
+// Business Settings Operations
+// ============================================
+
+export async function getBusinessSettings(): Promise<Record<string, string>> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("business_settings")
+    .select("key, value");
+
+  if (error) {
+    console.warn("⚠️ Could not load business settings:", error.message);
+    return {};
+  }
+
+  return (data || []).reduce((acc: Record<string, string>, row: { key: string; value: string }) => {
+    acc[row.key] = row.value;
+    return acc;
+  }, {});
+}
+
+export async function updateBusinessSetting(key: string, value: string): Promise<void> {
+  const supabase = getSupabase();
+  await supabase
+    .from("business_settings")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+}
+
+// ============================================
+// Knowledge Fragments Operations
+// ============================================
+
+export async function getKnowledgeFragments(): Promise<KnowledgeFragment[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("knowledge_fragments")
+    .select("*")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.warn("⚠️ Could not load knowledge fragments:", error.message);
+    return [];
+  }
+  return (data || []) as KnowledgeFragment[];
+}
+
+export async function saveKnowledgeFragment(
+  content: string,
+  topic?: string
+): Promise<KnowledgeFragment> {
+  const supabase = getSupabase();
+
+  // If there's a topic, deactivate previous fragments with the same topic
+  if (topic) {
+    await supabase
+      .from("knowledge_fragments")
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq("topic", topic)
+      .eq("is_active", true);
+  }
+
+  const { data, error } = await supabase
+    .from("knowledge_fragments")
+    .insert({ content, topic: topic || null, is_active: true })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Failed to save knowledge fragment: ${error.message}`);
+  return data as KnowledgeFragment;
+}
+
+export async function deactivateKnowledgeFragment(id: string): Promise<void> {
+  const supabase = getSupabase();
+  await supabase
+    .from("knowledge_fragments")
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq("id", id);
+}
+
+export async function getAllKnowledgeFragments(): Promise<KnowledgeFragment[]> {
+  const supabase = getSupabase();
+  const { data } = await supabase
+    .from("knowledge_fragments")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return (data || []) as KnowledgeFragment[];
 }
