@@ -135,7 +135,7 @@ export default function KnowledgePage() {
               {faqs.map((faq) => (
                 <div key={faq.id} style={{ 
                   background: "white", padding: "1.5rem", borderRadius: "8px", 
-                  border: \`1px solid \${faq.is_active ? 'var(--border-color)' : '#ffb3b3'}\`,
+                  border: `1px solid ${faq.is_active ? 'var(--border-color)' : '#ffb3b3'}`,
                   boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
@@ -146,13 +146,13 @@ export default function KnowledgePage() {
                   </div>
                   <textarea 
                     defaultValue={faq.answer || ""} placeholder="Escribe la respuesta aquí..."
-                    style={{ width: "100%", minHeight: "80px", marginBottom: "1rem" }} id={\`answer-\${faq.id}\`}
+                    style={{ width: "100%", minHeight: "80px", marginBottom: "1rem" }} id={`answer-${faq.id}`}
                   />
                   <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
-                    <button style={{ background: "var(--text-muted)" }} onClick={() => handleUpdateFaq(faq.id, (document.getElementById(\`answer-\${faq.id}\`) as HTMLTextAreaElement).value, false)}>
+                    <button style={{ background: "var(--text-muted)" }} onClick={() => handleUpdateFaq(faq.id, (document.getElementById(`answer-${faq.id}`) as HTMLTextAreaElement).value, false)}>
                       Guardar Borrador
                     </button>
-                    <button onClick={() => handleUpdateFaq(faq.id, (document.getElementById(\`answer-\${faq.id}\`) as HTMLTextAreaElement).value, true)}>
+                    <button onClick={() => handleUpdateFaq(faq.id, (document.getElementById(`answer-${faq.id}`) as HTMLTextAreaElement).value, true)}>
                       Guardar y Activar
                     </button>
                   </div>
