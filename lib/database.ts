@@ -10,21 +10,27 @@ export async function getOrCreateConversation(
   customerName?: string
 ): Promise<Conversation> {
   const supabase = getSupabase();
-  // Try to find ANY existing non-closed conversation for this phone number.
-  // We include ALL statuses except 'closed' so that:
-  //  - 'attended' conversations are reused (bot stays paused)
-  //  - 'sale_completed' conversations are reused (bot stays paused)
-  //  - No duplicate conversations are created while admin has control
-  const { data: existing } = await supabase
+
+  // IMPORTANT: Use array query (NOT .single() or .maybeSingle()) because
+  // those throw errors when 0 or >1 rows match, which causes fallthrough
+  // to creating a DUPLICATE conversation — the root cause of the bot
+  // not pausing when admin takes control.
+  const { data: rows, error: fetchError } = await supabase
     .from("conversations")
     .select("*")
     .eq("phone_number", phoneNumber)
     .not("status", "eq", "closed")
     .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  if (fetchError) {
+    console.error("❌ Error fetching conversation:", fetchError);
+  }
+
+  const existing = rows && rows.length > 0 ? rows[0] : null;
 
   if (existing) {
+    console.log(`📋 Found existing conversation ${existing.id} with status: ${existing.status}`);
     // Update customer name if we have it now and didn't before
     if (customerName && !existing.customer_name) {
       await supabase
@@ -35,6 +41,8 @@ export async function getOrCreateConversation(
     }
     return existing as Conversation;
   }
+
+  console.log(`🆕 Creating new conversation for ${phoneNumber}`);
 
   // Create new conversation
   const { data: newConv, error } = await supabase
@@ -47,7 +55,24 @@ export async function getOrCreateConversation(
     .select()
     .single();
 
-  if (error) throw new Error(`Failed to create conversation: ${error.message}`);
+  // If INSERT failed due to unique constraint (race condition: another webhook
+  // created it first), re-fetch the existing conversation.
+  if (error) {
+    console.warn(`⚠️ Insert failed (likely race condition): ${error.message}. Re-fetching...`);
+    const { data: retryRows } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("phone_number", phoneNumber)
+      .not("status", "eq", "closed")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (retryRows && retryRows.length > 0) {
+      console.log(`📋 Found conversation on retry: ${retryRows[0].id} status: ${retryRows[0].status}`);
+      return retryRows[0] as Conversation;
+    }
+    throw new Error(`Failed to create conversation: ${error.message}`);
+  }
   return newConv as Conversation;
 }
 
