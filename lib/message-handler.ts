@@ -47,6 +47,11 @@ export async function handleIncomingMessage(
     // 4. Guardar mensaje entrante
     await saveMessage(conversation.id, "user", text, messageId);
 
+    if (conversation.status === "attended" || conversation.status === "sale_completed" || conversation.status === "closed") {
+      console.log(`⏭️ Bot paused. Conversation status is: ${conversation.status}`);
+      return;
+    }
+
     // 5. Obtener contexto en paralelo para velocidad
     const [recentMessages, products, faqs] = await Promise.all([
       getRecentMessages(conversation.id, 10),
