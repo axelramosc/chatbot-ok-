@@ -207,7 +207,7 @@ export default function SettingsPage() {
                   borderRadius: "12px", padding: "1.5rem",
                   boxShadow: "0 2px 4px rgba(0,0,0,0.02)"
                 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+                  <div className="crm-catalog-row-top">
                     <div>
                       <label style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Nombre</label>
                       <input 
@@ -238,7 +238,7 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "1rem", marginBottom: "1rem", background: "#f8f9fa", padding: "1rem", borderRadius: "8px" }}>
+                  <div className="crm-catalog-row-pricing">
                     <div>
                       <label style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Unidad</label>
                       <input type="text" value={product.unit || "pieza"} onChange={e => handleProductChange(product.id, "unit", e.target.value)} style={{ width: "100%" }} />
