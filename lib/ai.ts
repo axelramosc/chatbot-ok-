@@ -2,7 +2,7 @@ import Groq from "groq-sdk";
 import type { Product, FAQ, Message, AIResponse, KnowledgeFragment } from "./types";
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY!,
+  apiKey: process.env.GROQ_API_KEY || "dummy_key_to_prevent_crash_at_build",
 });
 
 // ============================================
