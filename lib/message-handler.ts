@@ -12,7 +12,7 @@ import {
 } from "./database";
 import { getSupabase } from "./supabase";
 import { generateResponse } from "./ai";
-import { notifyAdminOfSale, notifyAdminOfUnknownQuery } from "./notifications";
+import { notifyAdminOfSale, notifyAdminOfUnknownQuery, notifyAdminOfRepresentativeRequest } from "./notifications";
 import type { WhatsAppWebhookPayload } from "./types";
 
 // Intents que activan notificación de venta al admin
@@ -20,6 +20,9 @@ const SALE_INTENTS = ["ready_to_buy", "bought"];
 
 // Intents que activan notificación de consulta sin respuesta al admin
 const UNKNOWN_INTENTS = ["unknown"];
+
+// Intents que activan notificación de solicitud de representante
+const REPRESENTATIVE_INTENTS = ["representative"];
 
 export async function handleIncomingMessage(
   payload: WhatsAppWebhookPayload
@@ -194,6 +197,16 @@ export async function handleIncomingMessage(
           question: text,
           conversationSummary: summary,
         }).catch(e => console.warn("Error notifying unknown query:", e));
+      }
+
+      if (REPRESENTATIVE_INTENTS.includes(aiResponse.intent)) {
+        console.log(`🙋 Representative request from ${from} — notifying admin...`);
+        await notifyAdminOfRepresentativeRequest({
+          conversationId: conversation.id,
+          phoneNumber: from,
+          customerName: conversation.customer_name || contactName,
+          conversationSummary: summary,
+        }).catch(e => console.warn("Error notifying representative request:", e));
       }
     } catch (e) {
       console.warn(`⚠️ Non-critical error in admin notifications:`, e);
