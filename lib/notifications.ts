@@ -1,6 +1,41 @@
 import { sendTextMessage } from "./whatsapp";
 import { createSalesLead, updateSalesLeadStatus, getBusinessSettings } from "./database";
 
+// ============================================
+// Notificación de Solicitud de Representante
+// ============================================
+
+interface RepresentativeRequestData {
+  conversationId: string;
+  phoneNumber: string;
+  customerName: string | null;
+  conversationSummary: string;
+}
+
+export async function notifyAdminOfRepresentativeRequest(data: RepresentativeRequestData): Promise<void> {
+  const numbers = await getAdminNumbers();
+  if (numbers.length === 0) {
+    console.error("No admin numbers configured to receive representative request notification");
+    return;
+  }
+
+  try {
+    const message =
+      `🙋 *¡Cliente solicita hablar con un representante!*\n\n` +
+      `👤 *Cliente:* ${data.customerName || "No proporcionó nombre"}\n` +
+      `📱 *WhatsApp:* +${data.phoneNumber}\n\n` +
+      `💬 *Contexto reciente:*\n${data.conversationSummary.substring(0, 400)}\n\n` +
+      `⚡ Por favor contáctalo a la brevedad. Ava sigue atendiendo sus dudas mientras espera.`;
+
+    for (const num of numbers) {
+      await sendTextMessage(num, message);
+    }
+    console.log(`✅ Admins notified of representative request from ${data.phoneNumber}`);
+  } catch (error) {
+    console.error("Error notifying admin of representative request:", error);
+  }
+}
+
 // Tu número personal de WhatsApp para recibir alertas (Fallback fallback si la DB falla)
 const FALLBACK_ADMIN_NUMBER = process.env.ADMIN_WHATSAPP_NUMBER || "";
 
