@@ -45,15 +45,18 @@ export default function LoginPage() {
       justifyContent: "center",
       alignItems: "center",
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #eef4f0 0%, #e0ede6 100%)",
+      background: "radial-gradient(ellipse at 65% 35%, rgba(82, 183, 136, 0.30) 0%, rgba(45, 106, 79, 0.14) 45%, transparent 68%), radial-gradient(ellipse at 20% 80%, rgba(27, 67, 50, 0.18) 0%, transparent 55%), linear-gradient(145deg, #dff0e8 0%, #c8e6d4 100%)",
       padding: "1.25rem",
     }}>
       <div style={{
         maxWidth: "400px",
         width: "100%",
-        background: "white",
+        background: "rgba(255, 255, 255, 0.82)",
+        backdropFilter: "blur(24px) saturate(180%)",
+        WebkitBackdropFilter: "blur(24px) saturate(180%)",
         borderRadius: "var(--radius-lg)",
-        boxShadow: "0 8px 40px rgba(27, 67, 50, 0.12), 0 2px 8px rgba(0,0,0,0.06)",
+        border: "1px solid rgba(255, 255, 255, 0.60)",
+        boxShadow: "0 8px 40px rgba(27, 67, 50, 0.14), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)",
         overflow: "hidden",
       }}>
         {/* Top accent bar */}

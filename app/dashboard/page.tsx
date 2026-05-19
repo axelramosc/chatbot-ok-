@@ -231,31 +231,28 @@ export default function InboxPage() {
                 </div>
               </div>
 
+            </div>
+
+            {/* Status bar — always visible */}
+            <div className="crm-status-bar" data-status={selectedConv.status}>
+              <div className="crm-status-indicator">
+                <div className="crm-status-dot" />
+                <span className="crm-status-text">
+                  {selectedConv.status === "active"
+                    ? "Ava está activa"
+                    : selectedConv.status === "attended"
+                    ? "Admin en control — Ava pausada"
+                    : selectedConv.status === "sale_pending"
+                    ? "Venta pendiente"
+                    : selectedConv.status}
+                </span>
+              </div>
               {selectedConv.status !== "active" && (
-                <button
-                  onClick={handleReactivateBot}
-                  style={{
-                    fontSize: "0.8rem",
-                    flexShrink: 0,
-                    padding: "0.4375rem 0.875rem",
-                    background: "transparent",
-                    border: "1.5px solid var(--primary)",
-                    color: "var(--primary)",
-                    borderRadius: "var(--radius-sm)",
-                  }}
-                >
-                  Reactivar Bot
+                <button onClick={handleReactivateBot} className="crm-reactivate-btn">
+                  Reactivar Ava
                 </button>
               )}
             </div>
-
-            {/* Attended banner */}
-            {selectedConv.status === "attended" && (
-              <div className="crm-attended-banner">
-                <span style={{ fontSize: "1rem" }}>&#9889;</span>
-                <strong>Ava está pausada.</strong>&nbsp;Estás atendiendo esta conversación manualmente.
-              </div>
-            )}
 
             {/* Messages */}
             <div className="crm-chat-messages">

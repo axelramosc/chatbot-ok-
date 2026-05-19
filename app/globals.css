@@ -26,11 +26,19 @@
   --sidebar-muted: rgba(255, 255, 255, 0.42);
   --sidebar-accent: #74c69d;
 
+  /* Glassmorphism */
+  --glass-white: rgba(255, 255, 255, 0.88);
+  --glass-white-light: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.55);
+  --glass-blur: blur(16px) saturate(180%);
+  --glass-blur-sm: blur(10px) saturate(160%);
+
   /* Shadows */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.10), 0 4px 8px rgba(0, 0, 0, 0.06);
+  --shadow-glass: 0 8px 32px rgba(27, 67, 50, 0.10), inset 0 1px 0 rgba(255,255,255,0.8);
 
   /* Radius */
   --radius-xs: 4px;
@@ -304,9 +312,7 @@ select {
   scrollbar-color: var(--border-color) transparent;
 }
 
-.crm-conversations-panel::-webkit-scrollbar {
-  width: 4px;
-}
+.crm-conversations-panel::-webkit-scrollbar { width: 4px; }
 .crm-conversations-panel::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 4px;
@@ -408,18 +414,111 @@ select {
   min-width: 0;
 }
 
+/* Glass chat header */
 .crm-chat-header {
   padding: 0.875rem 1.5rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--glass-white);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  border-bottom: 1px solid var(--glass-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
   min-height: 64px;
   flex-shrink: 0;
-  box-shadow: var(--shadow-xs);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.05);
 }
 
+/* ── Status bar ── */
+.crm-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5625rem 1.5rem;
+  flex-shrink: 0;
+  gap: 0.75rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.crm-status-bar[data-status="active"] {
+  background: linear-gradient(90deg, rgba(21, 128, 61, 0.10) 0%, rgba(82, 183, 136, 0.06) 100%);
+}
+
+.crm-status-bar[data-status="attended"] {
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.13) 0%, rgba(234, 88, 12, 0.07) 100%);
+}
+
+.crm-status-bar[data-status="sale_pending"] {
+  background: linear-gradient(90deg, rgba(29, 78, 216, 0.10) 0%, rgba(59, 130, 246, 0.06) 100%);
+}
+
+.crm-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.crm-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.crm-status-bar[data-status="active"] .crm-status-dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.22);
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+
+.crm-status-bar[data-status="attended"] .crm-status-dot {
+  background: #ea580c;
+  box-shadow: 0 0 0 3px rgba(234, 88, 12, 0.22);
+}
+
+.crm-status-bar[data-status="sale_pending"] .crm-status-dot {
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.22); }
+  50%       { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.10); }
+}
+
+.crm-status-text {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crm-status-bar[data-status="active"]       .crm-status-text { color: #15803d; }
+.crm-status-bar[data-status="attended"]     .crm-status-text { color: #c2410c; }
+.crm-status-bar[data-status="sale_pending"] .crm-status-text { color: #1d4ed8; }
+
+.crm-reactivate-btn {
+  padding: 0.375rem 0.875rem !important;
+  font-size: 0.775rem !important;
+  background: var(--primary) !important;
+  color: white !important;
+  border-radius: var(--radius-sm) !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm) !important;
+  font-weight: 600 !important;
+}
+
+.crm-reactivate-btn:hover {
+  background: var(--primary-dark) !important;
+}
+
+/* ── Messages ── */
 .crm-chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -431,9 +530,7 @@ select {
   scrollbar-color: var(--border-color) transparent;
 }
 
-.crm-chat-messages::-webkit-scrollbar {
-  width: 4px;
-}
+.crm-chat-messages::-webkit-scrollbar { width: 4px; }
 .crm-chat-messages::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 4px;
@@ -456,16 +553,22 @@ select {
   border-bottom-right-radius: var(--radius-xs);
 }
 
+/* Glass bot bubble */
 .crm-msg-bubble.crm-msg-bot {
   align-self: flex-start;
-  background: var(--chat-bubble-bot);
-  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.70);
   border-bottom-left-radius: var(--radius-xs);
+  box-shadow: var(--shadow-xs), inset 0 1px 0 rgba(255,255,255,0.9);
 }
 
 .crm-msg-bubble.crm-msg-admin {
   align-self: flex-start;
-  background: #fff8f0;
+  background: rgba(255, 248, 240, 0.90);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid #fcd5a0;
   border-bottom-left-radius: var(--radius-xs);
 }
@@ -485,11 +588,13 @@ select {
   margin-top: 0.35rem;
 }
 
-/* Chat input */
+/* Glass input bar */
 .crm-chat-input-bar {
   padding: 1rem 1.5rem;
-  background: var(--surface);
-  border-top: 1px solid var(--border-color);
+  background: var(--glass-white);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  border-top: 1px solid var(--glass-border);
   flex-shrink: 0;
 }
 
@@ -497,17 +602,17 @@ select {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  background: var(--bg-color);
+  background: rgba(242, 245, 243, 0.70);
   border: 1.5px solid var(--border-color);
   border-radius: var(--radius-xl);
   padding: 0.3125rem 0.3125rem 0.3125rem 1.125rem;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 
 .crm-chat-input-form:focus-within {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.10);
-  background: white;
+  background: rgba(255, 255, 255, 0.90);
 }
 
 .crm-chat-input-field {
@@ -554,19 +659,6 @@ select {
   background: var(--border-color);
   opacity: 1;
   transform: none;
-}
-
-/* Attended banner */
-.crm-attended-banner {
-  padding: 0.6rem 1.5rem;
-  background: linear-gradient(90deg, #f97316, #ea580c);
-  color: white;
-  font-size: 0.84rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 500;
-  flex-shrink: 0;
 }
 
 /* Empty state */
@@ -738,6 +830,7 @@ select {
     padding-bottom: 64px;
   }
 
+  /* Glass mobile nav */
   .crm-mobile-nav {
     display: flex;
     align-items: stretch;
@@ -746,8 +839,10 @@ select {
     bottom: 0;
     left: 0;
     right: 0;
-    background: var(--surface);
-    border-top: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.80);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid rgba(255, 255, 255, 0.55);
     z-index: 100;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
     padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -772,7 +867,7 @@ select {
     position: relative;
   }
 
-  /* Animated indicator dot at bottom */
+  /* Animated indicator */
   .crm-mobile-nav-item::after {
     content: '';
     position: absolute;
@@ -829,6 +924,10 @@ select {
 
   .crm-back-btn:active {
     transform: none !important;
+  }
+
+  .crm-status-bar {
+    padding: 0.5rem 1rem;
   }
 
   .crm-catalog-row-top {
