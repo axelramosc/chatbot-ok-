@@ -55,7 +55,13 @@ export async function sendTextMessage(
 
     if (!response.ok) {
       const error = await response.json();
-      console.error("WhatsApp send error:", JSON.stringify(error));
+      const code = error?.error?.code;
+      const msg = error?.error?.message || "unknown error";
+      if (code === 190) {
+        console.error(`🔑 WHATSAPP TOKEN EXPIRED (code 190): ${msg} — Regenerate WHATSAPP_ACCESS_TOKEN in Vercel env vars.`);
+      } else {
+        console.error(`❌ WhatsApp send error (code ${code}): ${msg}`, JSON.stringify(error));
+      }
       return false;
     }
 
