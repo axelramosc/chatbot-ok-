@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "../../../../lib/supabase";
 import Groq from "groq-sdk";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
 export async function GET(request: Request) {
   // Verificación de seguridad para Cron Job (Vercel manda un header específico)
   // En local, podemos saltarlo si no hay header, pero en prod es importante.
@@ -11,6 +9,8 @@ export async function GET(request: Request) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
+
+  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "dummy_key_to_prevent_crash_at_build" });
 
   try {
     // 1. Obtener mensajes de las últimas 24 horas del usuario
