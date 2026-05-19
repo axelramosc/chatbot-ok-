@@ -10,7 +10,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  
+
   const supabase = createClient();
   const router = useRouter();
 
@@ -28,11 +28,8 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setErrorMsg(error.message);
@@ -43,66 +40,129 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex justify-center items-center h-screen bg-gray-50">
-      <div style={{ maxWidth: "400px", width: "100%", padding: "2rem", background: "white", borderRadius: "8px", boxShadow: "0 4px 6px rgba(0,0,0,0.1)", textAlign: "center" }}>
-        <h1 style={{ marginBottom: "1rem" }}>Greenland Deco CRM</h1>
-        <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>
-          Inicia sesión para acceder a la bandeja de entrada y conocimiento de Ava.
-        </p>
+    <div style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #eef4f0 0%, #e0ede6 100%)",
+      padding: "1.25rem",
+    }}>
+      <div style={{
+        maxWidth: "400px",
+        width: "100%",
+        background: "white",
+        borderRadius: "var(--radius-lg)",
+        boxShadow: "0 8px 40px rgba(27, 67, 50, 0.12), 0 2px 8px rgba(0,0,0,0.06)",
+        overflow: "hidden",
+      }}>
+        {/* Top accent bar */}
+        <div style={{
+          height: "4px",
+          background: "linear-gradient(90deg, var(--primary-dark), var(--primary-light))",
+        }} />
 
-        {errorMsg && (
-          <div style={{ background: "#f8d7da", color: "#721c24", padding: "0.5rem", borderRadius: "4px", marginBottom: "1rem", fontSize: "0.9rem" }}>
-            {errorMsg}
+        <div style={{ padding: "2.25rem 2rem 2rem" }}>
+          {/* Brand mark */}
+          <div style={{ textAlign: "center", marginBottom: "1.75rem" }}>
+            <div style={{
+              width: 52,
+              height: 52,
+              background: "linear-gradient(135deg, var(--primary-dark), var(--primary))",
+              borderRadius: "14px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 1rem",
+              boxShadow: "0 4px 14px rgba(45, 106, 79, 0.30)",
+            }}>
+              <span style={{ color: "white", fontSize: "1.4rem", fontWeight: 800, letterSpacing: "-0.02em" }}>G</span>
+            </div>
+            <h1 style={{ fontSize: "1.375rem", margin: "0 0 0.375rem" }}>Greenland Deco CRM</h1>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", margin: 0 }}>
+              Inicia sesión para acceder a tu panel
+            </p>
           </div>
-        )}
 
-        <form onSubmit={handleEmailLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.5rem", textAlign: "left" }}>
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.9rem", fontWeight: "bold" }}>Correo Electrónico</label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="tu@correo.com"
-              required
-            />
+          {errorMsg && (
+            <div style={{
+              background: "#fef2f2",
+              color: "#991b1b",
+              padding: "0.75rem 1rem",
+              borderRadius: "var(--radius-sm)",
+              marginBottom: "1.25rem",
+              fontSize: "0.875rem",
+              border: "1px solid #fecaca",
+            }}>
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleEmailLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.25rem" }}>
+            <div>
+              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.8375rem", fontWeight: 600, color: "var(--text-secondary)" }}>
+                Correo electrónico
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@correo.com"
+                required
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.8375rem", fontWeight: 600, color: "var(--text-secondary)" }}>
+                Contraseña
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", padding: "0.8125rem", marginTop: "0.25rem", fontSize: "0.9375rem" }}
+            >
+              <Mail size={17} />
+              {loading ? "Iniciando sesión..." : "Entrar con correo"}
+            </button>
+          </form>
+
+          <div style={{ position: "relative", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <div style={{ flex: 1, height: "1px", background: "var(--border-color)" }} />
+            <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", whiteSpace: "nowrap" }}>o continúa con</span>
+            <div style={{ flex: 1, height: "1px", background: "var(--border-color)" }} />
           </div>
-          <div>
-            <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.9rem", fontWeight: "bold" }}>Contraseña</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-          </div>
-          <button 
-            type="submit"
+
+          <button
+            onClick={handleGoogleLogin}
+            type="button"
             disabled={loading}
-            style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", padding: "0.75rem", marginTop: "0.5rem" }}
+            style={{
+              width: "100%",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "0.625rem",
+              padding: "0.8125rem",
+              background: "white",
+              color: "#374151",
+              border: "1.5px solid var(--border-color)",
+              borderRadius: "var(--radius-sm)",
+              fontWeight: 500,
+              fontSize: "0.9375rem",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            }}
           >
-            <Mail size={18} />
-            {loading ? "Iniciando..." : "Entrar con Correo"}
+            <LogIn size={17} />
+            Iniciar sesión con Google
           </button>
-        </form>
-
-        <div style={{ position: "relative", marginBottom: "1.5rem" }}>
-          <hr style={{ borderTop: "1px solid var(--border-color)", margin: "0" }} />
-          <span style={{ position: "absolute", top: "-10px", left: "50%", transform: "translateX(-50%)", background: "white", padding: "0 10px", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-            ó
-          </span>
         </div>
-
-        <button 
-          onClick={handleGoogleLogin} 
-          type="button"
-          disabled={loading}
-          style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", padding: "0.75rem", background: "white", color: "#333", border: "1px solid var(--border-color)" }}
-        >
-          <LogIn size={18} />
-          Iniciar sesión con Google
-        </button>
       </div>
     </div>
   );

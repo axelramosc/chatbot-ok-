@@ -106,34 +106,22 @@ export default function SettingsPage() {
 
   return (
     <div style={{ padding: "2rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "1.8rem", margin: "0 0 1.5rem 0" }}>Configuración del Sistema</h2>
+      <div>
+        <h2 style={{ fontSize: "1.5rem", margin: "0 0 1.5rem 0" }}>Configuración del Sistema</h2>
         
-        <div style={{ display: "flex", gap: "1rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "1rem" }}>
-          <button 
+        <div className="crm-tabs">
+          <button
             onClick={() => setActiveTab("business")}
-            style={{ 
-              background: activeTab === "business" ? "var(--primary)" : "transparent",
-              color: activeTab === "business" ? "white" : "var(--text-color)",
-              border: "1px solid",
-              borderColor: activeTab === "business" ? "var(--primary)" : "var(--border-color)",
-              display: "flex", alignItems: "center", gap: "0.5rem"
-            }}
+            className={`crm-tab-btn ${activeTab === "business" ? "crm-tab-active" : "crm-tab-inactive"}`}
           >
-            <BuildingStorefrontIcon style={{ width: "18px" }} />
+            <BuildingStorefrontIcon style={{ width: "17px" }} />
             Datos del Negocio
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab("catalog")}
-            style={{ 
-              background: activeTab === "catalog" ? "var(--primary)" : "transparent",
-              color: activeTab === "catalog" ? "white" : "var(--text-color)",
-              border: "1px solid",
-              borderColor: activeTab === "catalog" ? "var(--primary)" : "var(--border-color)",
-              display: "flex", alignItems: "center", gap: "0.5rem"
-            }}
+            className={`crm-tab-btn ${activeTab === "catalog" ? "crm-tab-active" : "crm-tab-inactive"}`}
           >
-            <CubeIcon style={{ width: "18px" }} />
+            <CubeIcon style={{ width: "17px" }} />
             Catálogo de Productos
           </button>
         </div>

@@ -31,6 +31,7 @@ export default function DashboardLayout({
       {/* Sidebar — desktop & tablet */}
       <div className="crm-sidebar">
         <div className="crm-sidebar-header">
+          <div className="crm-sidebar-logo-icon">G</div>
           <span className="crm-sidebar-logo">Greenland CRM</span>
         </div>
 
