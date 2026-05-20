@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "../../lib/supabase-client";
 import { ChevronLeft, Send, MessageSquare } from "lucide-react";
+import { useToast } from "../components/toast";
 
 const getInitials = (name: string, phone: string) => {
   if (name) {
@@ -18,6 +19,8 @@ const STATUS_MAP: Record<string, { bg: string; color: string; label: string }> =
   active:       { bg: "#dcfce7", color: "#15803d", label: "Bot activo" },
   attended:     { bg: "#fff7ed", color: "#c2410c", label: "Admin" },
   sale_pending: { bg: "#eff6ff", color: "#1d4ed8", label: "Venta pendiente" },
+  sale_completed: { bg: "#f0fdf4", color: "#166534", label: "Venta cerrada" },
+  closed:       { bg: "#f4f4f5", color: "#71717a", label: "Cerrado" },
 };
 
 const getStatus = (s: string) =>
@@ -30,17 +33,72 @@ export default function InboxPage() {
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [search, setSearch] = useState("");
+  const toast = useToast();
   const supabase = createClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedConvRef = useRef<any>(null);
 
+  // Keep ref in sync so realtime callbacks see current value
+  useEffect(() => {
+    selectedConvRef.current = selectedConv;
+  }, [selectedConv]);
+
+  // Initial load + Realtime subscriptions
   useEffect(() => {
     fetchConversations();
-    const id = setInterval(() => {
-      fetchConversations();
-      if (selectedConv) fetchMessages(selectedConv.id, true);
-    }, 3000);
-    return () => clearInterval(id);
-  }, [selectedConv]);
+
+    // Subscribe to all conversation changes
+    const convChannel = supabase
+      .channel("realtime:conversations")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "conversations" },
+        () => { fetchConversations(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(convChannel); };
+  }, []);
+
+  // Subscribe to messages for the selected conversation
+  useEffect(() => {
+    if (!selectedConv) return;
+
+    fetchMessages(selectedConv.id);
+
+    const msgChannel = supabase
+      .channel(`realtime:messages:${selectedConv.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${selectedConv.id}`,
+        },
+        (payload) => {
+          setMessages((prev) => {
+            // Avoid duplicate if optimistic message already added
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            // Replace matching temp message if content matches
+            const tempIdx = prev.findIndex(
+              (m) => m.id.startsWith("temp-") && m.content === payload.new.content
+            );
+            if (tempIdx !== -1) {
+              const next = [...prev];
+              next[tempIdx] = payload.new;
+              return next;
+            }
+            return [...prev, payload.new];
+          });
+          setTimeout(scrollToBottom, 100);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(msgChannel); };
+  }, [selectedConv?.id]);
 
   const fetchConversations = async () => {
     const { data } = await supabase
@@ -50,29 +108,22 @@ export default function InboxPage() {
     if (data) setConversations(data);
   };
 
-  const fetchMessages = async (convId: string, silent = false) => {
+  const fetchMessages = async (convId: string) => {
     const { data } = await supabase
       .from("messages")
       .select("*")
       .eq("conversation_id", convId)
       .order("created_at", { ascending: true });
     if (data) {
-      setMessages((prev) => {
-        if (silent && prev.length > 0 && data.length > prev.length)
-          setTimeout(scrollToBottom, 100);
-        return data;
-      });
-      if (!silent) setTimeout(scrollToBottom, 100);
+      setMessages(data);
+      setTimeout(scrollToBottom, 100);
     }
   };
 
   const handleSelectConv = (conv: any) => {
     setSelectedConv(conv);
-    fetchMessages(conv.id);
     setShowChat(true);
   };
-
-  const handleBack = () => setShowChat(false);
 
   const scrollToBottom = () =>
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,7 +153,7 @@ export default function InboxPage() {
     setTimeout(scrollToBottom, 100);
 
     try {
-      await fetch("/api/send-message", {
+      const res = await fetch("/api/send-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -111,8 +162,12 @@ export default function InboxPage() {
           content,
         }),
       });
+      if (!res.ok) {
+        toast("Error al enviar el mensaje.", "error");
+        setInputText(content);
+      }
     } catch {
-      alert("Error al enviar el mensaje.");
+      toast("Error al enviar el mensaje.", "error");
       setInputText(content);
     } finally {
       setSending(false);
@@ -130,14 +185,37 @@ export default function InboxPage() {
       .from("conversations")
       .update({ status: "active" })
       .eq("id", selectedConv.id);
-    if (error) alert("Error al reactivar el bot.");
+    if (error) {
+      toast("Error al reactivar Ava.", "error");
+    } else {
+      toast("Ava reactivada con éxito.", "success");
+    }
   };
+
+  // KPI calculations
+  const kpi = {
+    total: conversations.length,
+    active: conversations.filter((c) => c.status === "active").length,
+    pending: conversations.filter((c) => c.status === "sale_pending").length,
+    attended: conversations.filter((c) => c.status === "attended").length,
+  };
+
+  const filtered = conversations.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      (c.customer_name || "").toLowerCase().includes(q) ||
+      c.phone_number.includes(q)
+    );
+  });
 
   return (
     <div className="flex h-full w-full">
 
       {/* ── Conversation list ── */}
       <div className={`crm-conversations-panel ${showChat ? "crm-panel-hidden" : ""}`}>
+
+        {/* Header */}
         <div style={{
           padding: "1rem 1.25rem",
           borderBottom: "1px solid var(--border-color)",
@@ -155,11 +233,43 @@ export default function InboxPage() {
             padding: "0.2rem 0.625rem",
             fontWeight: 700,
           }}>
-            {conversations.length}
+            {filtered.length}
           </span>
         </div>
 
-        {conversations.map((conv) => {
+        {/* KPI strip */}
+        <div className="crm-kpi-strip">
+          <div className="crm-kpi-card">
+            <div className="crm-kpi-number">{kpi.total}</div>
+            <div className="crm-kpi-label">Total</div>
+          </div>
+          <div className="crm-kpi-card">
+            <div className="crm-kpi-number" style={{ color: "#15803d" }}>{kpi.active}</div>
+            <div className="crm-kpi-label">Ava activa</div>
+          </div>
+          <div className="crm-kpi-card">
+            <div className="crm-kpi-number" style={{ color: "#1d4ed8" }}>{kpi.pending}</div>
+            <div className="crm-kpi-label">Venta pend.</div>
+          </div>
+          <div className="crm-kpi-card">
+            <div className="crm-kpi-number" style={{ color: "#c2410c" }}>{kpi.attended}</div>
+            <div className="crm-kpi-label">Admin</div>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="crm-search-bar">
+          <input
+            type="text"
+            className="crm-search-input"
+            placeholder="Buscar por nombre o teléfono..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* List */}
+        {filtered.map((conv) => {
           const st = getStatus(conv.status);
           return (
             <div
@@ -204,7 +314,7 @@ export default function InboxPage() {
             {/* Header */}
             <div className="crm-chat-header">
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}>
-                <button className="crm-back-btn" onClick={handleBack}>
+                <button className="crm-back-btn" onClick={() => setShowChat(false)}>
                   <ChevronLeft size={20} />
                 </button>
                 <div
@@ -230,10 +340,9 @@ export default function InboxPage() {
                   )}
                 </div>
               </div>
-
             </div>
 
-            {/* Status bar — always visible */}
+            {/* Status bar */}
             <div className="crm-status-bar" data-status={selectedConv.status}>
               <div className="crm-status-indicator">
                 <div className="crm-status-dot" />

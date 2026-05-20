@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   // Verificación de seguridad para Cron Job (Vercel manda un header específico)
   // En local, podemos saltarlo si no hay header, pero en prod es importante.
   const authHeader = request.headers.get("authorization");
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 

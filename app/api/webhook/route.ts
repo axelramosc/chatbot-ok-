@@ -35,10 +35,14 @@ export async function POST(request: NextRequest) {
   try {
     const rawBody = await request.text();
 
-    // Verify webhook signature for security
-    const signature = request.headers.get("x-hub-signature-256");
+    // Verify webhook signature — always required, no bypass
+    if (!process.env.WHATSAPP_APP_SECRET) {
+      console.error("❌ WHATSAPP_APP_SECRET is not set — rejecting all requests");
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+    }
 
-    if (process.env.WHATSAPP_APP_SECRET && !verifyWebhookSignature(rawBody, signature)) {
+    const signature = request.headers.get("x-hub-signature-256");
+    if (!verifyWebhookSignature(rawBody, signature)) {
       console.warn("❌ Invalid webhook signature");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }

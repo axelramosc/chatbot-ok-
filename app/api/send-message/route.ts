@@ -1,7 +1,29 @@
 import { NextResponse } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { getSupabase } from "../../../lib/supabase";
+import { sendTextMessage } from "../../../lib/whatsapp";
 
 export async function POST(request: Request) {
+  // Verify the caller is an authenticated admin session
+  const cookieStore = await cookies();
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return cookieStore.get(name)?.value; },
+        set(_name: string, _value: string, _options: CookieOptions) {},
+        remove(_name: string, _options: CookieOptions) {},
+      },
+    }
+  );
+
+  const { data: { user } } = await sessionClient.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { conversation_id, phone_number, content } = await request.json();
 
@@ -39,18 +61,16 @@ export async function POST(request: Request) {
     }
 
     // 3. Send the message via WhatsApp Cloud API
-    const { sendTextMessage } = await import("../../../lib/whatsapp");
     const success = await sendTextMessage(phone_number, content);
 
     if (!success) {
       console.error("❌ WhatsApp send failed, but conversation is already paused");
       // Don't return error — the bot is paused and the message is saved.
-      // The admin can retry sending later.
     }
 
     return NextResponse.json({ success: true, message: "Message sent" });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Send message error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

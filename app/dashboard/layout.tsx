@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MessageSquare, BookOpen, LogOut, Settings } from "lucide-react";
+import { MessageSquare, BookOpen, LogOut, Settings, BarChart2 } from "lucide-react";
 import { createClient } from "../../lib/supabase-client";
 import { useRouter } from "next/navigation";
+import { ToastProvider } from "../components/toast";
 
 const navLinks = [
   { href: "/dashboard", icon: MessageSquare, label: "Bandeja de Entrada", short: "Bandeja" },
+  { href: "/dashboard/analytics", icon: BarChart2, label: "Analíticas", short: "Stats" },
   { href: "/dashboard/knowledge", icon: BookOpen, label: "Entrenamiento Ava", short: "Ava" },
   { href: "/dashboard/settings", icon: Settings, label: "Configuración", short: "Config" },
 ];
@@ -27,6 +29,7 @@ export default function DashboardLayout({
   };
 
   return (
+    <ToastProvider>
     <div className="flex h-screen">
       {/* Sidebar — desktop & tablet */}
       <div className="crm-sidebar">
@@ -79,5 +82,6 @@ export default function DashboardLayout({
         </button>
       </nav>
     </div>
+    </ToastProvider>
   );
 }

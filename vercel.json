@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/extract-faqs",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/follow-up",
+      "schedule": "0 * * * *"
+    }
+  ]
+}

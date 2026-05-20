@@ -132,14 +132,19 @@ export function verifyWebhookSignature(
   rawBody: string,
   signature: string | null
 ): boolean {
-  if (!signature) return false;
+  if (!signature || !WHATSAPP_APP_SECRET) return false;
 
   const expectedSignature = crypto
     .createHmac("sha256", WHATSAPP_APP_SECRET)
     .update(rawBody)
     .digest("hex");
 
-  return signature === `sha256=${expectedSignature}`;
+  const expected = Buffer.from(`sha256=${expectedSignature}`, "utf8");
+  const received = Buffer.from(signature, "utf8");
+
+  if (expected.length !== received.length) return false;
+
+  return crypto.timingSafeEqual(expected, received);
 }
 
 // ============================================

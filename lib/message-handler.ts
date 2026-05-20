@@ -151,11 +151,38 @@ export async function handleIncomingMessage(
       console.warn(`⚠️ Non-critical error in post-AI status check:`, e);
     }
 
-    // 9. Guardar respuesta del bot (non-critical)
+    // 9. Guardar respuesta del bot + actualizar contexto del cliente (non-critical)
     try {
       await saveMessage(conversation.id, "bot", aiResponse.message);
     } catch (e) {
       console.warn(`⚠️ Non-critical error saving bot response:`, e);
+    }
+
+    try {
+      const supabase = getSupabase();
+      const existingContext = (conversation.context as Record<string, unknown>) || {};
+      const contextPatch: Record<string, unknown> = {
+        ...existingContext,
+        last_intent: aiResponse.intent,
+        last_seen: new Date().toISOString(),
+      };
+      if (aiResponse.products_mentioned.length > 0) {
+        const prev = (existingContext.products_interested as string[]) || [];
+        const merged = Array.from(new Set([...prev, ...aiResponse.products_mentioned]));
+        contextPatch.products_interested = merged;
+      }
+      if (aiResponse.intent === "interested" || aiResponse.intent === "ready_to_buy") {
+        contextPatch.interest_level = aiResponse.intent;
+      }
+      if (contactName && contactName !== "Cliente" && !existingContext.confirmed_name) {
+        contextPatch.confirmed_name = contactName;
+      }
+      await supabase
+        .from("conversations")
+        .update({ context: contextPatch })
+        .eq("id", conversation.id);
+    } catch (e) {
+      console.warn(`⚠️ Non-critical error updating conversation context:`, e);
     }
 
     // 10. Enviar respuesta al cliente vía WhatsApp
