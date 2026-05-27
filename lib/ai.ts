@@ -68,9 +68,9 @@ function buildMessageHistory(messages: Message[]): { role: "user" | "assistant";
 // Configurar AI_GATEWAY_API_KEY en Vercel para activar el routing.
 
 const PROVIDER_CHAIN = [
-  "anthropic/claude-haiku-4-5",
+  "anthropic/claude-haiku-4.5",
   "google/gemini-2.5-flash",
-  "groq/llama-3.3-70b-versatile",
+  "meta/llama-3.3-70b",
 ] as const;
 
 async function callLLMWithFailover(
@@ -82,6 +82,8 @@ async function callLLMWithFailover(
   let lastError: unknown = null;
 
   for (const modelId of PROVIDER_CHAIN) {
+    const t0 = Date.now();
+    console.log(`🤖 AI Gateway: intentando ${modelId}…`);
     try {
       const { text } = await generateText({
         model: gateway(modelId),
@@ -90,11 +92,14 @@ async function callLLMWithFailover(
         temperature: 0.5,
         maxOutputTokens: 512,
       });
+      console.log(`✅ AI Gateway: ${modelId} respondió OK en ${Date.now() - t0}ms`);
       return text;
     } catch (err) {
       lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`⚠️ AI Gateway: falló ${modelId} → ${msg}. Probando siguiente proveedor…`);
+      const e = err as { status?: number; statusCode?: number; message?: string; responseBody?: unknown };
+      const status = e?.status ?? e?.statusCode ?? "unknown";
+      const body = typeof e?.responseBody === "string" ? e.responseBody.slice(0, 300) : "";
+      console.warn(`⚠️ AI Gateway: falló ${modelId} (status=${status}, ${Date.now() - t0}ms) → ${e?.message ?? err}. body=${body}`);
     }
   }
 

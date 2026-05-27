@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     `;
 
     const { text } = await generateText({
-      model: gateway("anthropic/claude-haiku-4-5"),
+      model: gateway("anthropic/claude-haiku-4.5"),
       system: prompt,
       messages: [{ role: "user", content: "Extrae las FAQs ahora." }],
       temperature: 0.1,
