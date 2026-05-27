@@ -6,30 +6,54 @@ import type { Product, FAQ, Message, AIResponse, KnowledgeFragment } from "./typ
 // Context Builders
 // ============================================
 
+function formatProductEntry(p: Product, stockLabel: string): string {
+  let priceInfo = `Precio por ${p.unit}: $${p.price} MXN`;
+  if (p.price_per_box) priceInfo += ` | Precio por caja: $${p.price_per_box} MXN`;
+  if (p.pieces_per_box) priceInfo += ` (${p.pieces_per_box} ${p.unit}s por caja)`;
+
+  const restock = p.restock_date ? ` (Llega en: ${p.restock_date})` : "";
+  const coverage = p.coverage_per_piece ? `${p.coverage_per_piece} m² por pieza` : "N/A";
+
+  return `- **${p.name}** (${p.category || "General"})
+  ${priceInfo}
+  Estado: ${stockLabel}${restock}
+  Cobertura: ${coverage}
+  Descripción: ${p.description || "Sin descripción"}`;
+}
+
 function buildProductContext(products: Product[]): string {
   if (products.length === 0) return "No hay productos disponibles en este momento.";
 
-  return products
-    .map((p) => {
-      const disponibilidad = p.availability;
-      let stockStatus = disponibilidad === "agotado" ? "⚠️ AGOTADO" : "Disponible";
-      if (disponibilidad === "próximamente") stockStatus = "⏳ Próximamente";
+  const available = products.filter((p) => p.availability !== "agotado" && p.availability !== "próximamente");
+  const outOfStock = products.filter((p) => p.availability === "agotado");
+  const upcoming = products.filter((p) => p.availability === "próximamente");
 
-      let priceInfo = `Precio por ${p.unit}: $${p.price} MXN`;
-      if (p.price_per_box) {
-        priceInfo += ` | Precio por caja: $${p.price_per_box} MXN`;
-      }
-      if (p.pieces_per_box) {
-        priceInfo += ` (${p.pieces_per_box} ${p.unit}s por caja)`;
-      }
+  const sections: string[] = [];
 
-      return `- **${p.name}** (${p.category || "General"})
-  ${priceInfo}
-  Estado: ${stockStatus} ${p.restock_date ? `(Llega en: ${p.restock_date})` : ""}
-  Cobertura: ${p.coverage_per_piece ? `${p.coverage_per_piece} m² por pieza` : "N/A"}
-  Descripción: ${p.description || "Sin descripción"}`;
-    })
-    .join("\n\n");
+  if (available.length > 0) {
+    sections.push(
+      `▼ PRODUCTOS DISPONIBLES PARA VENTA ▼\n` +
+        available.map((p) => formatProductEntry(p, "✅ Disponible")).join("\n\n"),
+    );
+  }
+
+  if (outOfStock.length > 0) {
+    sections.push(
+      `▼ PRODUCTOS AGOTADOS (NO LOS OFREZCAS COMO DISPONIBLES) ▼\n` +
+        `REGLA ABSOLUTA: Estos productos NO están a la venta ahora mismo. Si el cliente pregunta "¿qué tienen?" o "¿qué productos manejan?", NO los enlistes como si estuvieran disponibles. Solo menciónalos si el cliente pregunta específicamente por ellos, y SIEMPRE acompáñalos de la frase "está agotado en este momento 😔" + ofrece una alternativa disponible.\n\n` +
+        outOfStock.map((p) => formatProductEntry(p, "⚠️ AGOTADO — NO DISPONIBLE A LA VENTA")).join("\n\n"),
+    );
+  }
+
+  if (upcoming.length > 0) {
+    sections.push(
+      `▼ PRODUCTOS PRÓXIMAMENTE ▼\n` +
+        `Estos productos aún no están disponibles. Solo menciónalos como "muy pronto" si el cliente pregunta o si pueden complementar una venta futura.\n\n` +
+        upcoming.map((p) => formatProductEntry(p, "⏳ Próximamente")).join("\n\n"),
+    );
+  }
+
+  return sections.join("\n\n");
 }
 
 function buildBusinessContext(settings: Record<string, string>): string {
@@ -119,7 +143,6 @@ export async function generateResponse(
   businessSettings: Record<string, string>,
   knowledgeFragments: KnowledgeFragment[]
 ): Promise<AIResponse> {
-  console.log(`[ai] generateResponse entered. AI_GATEWAY_API_KEY present: ${!!process.env.AI_GATEWAY_API_KEY}, VERCEL_OIDC_TOKEN present: ${!!process.env.VERCEL_OIDC_TOKEN}`);
   const productContext = buildProductContext(products);
   const faqContext = buildFAQContext(faqs);
   const businessContext = buildBusinessContext(businessSettings);
@@ -193,14 +216,24 @@ ESTRATEGIA DE VENTAS (aplica de forma natural)
    "Para darte la mejor atención en esto, te conectaré con uno de nuestros asesores. Ellos te pueden [dar el mejor precio / confirmar el pedido / resolver esa duda específica]. ¿Te parece bien?"
 
 ════════════════════════════════════
-PRODUCTOS AGOTADOS
+PRODUCTOS AGOTADOS — REGLAS NO NEGOCIABLES
 ════════════════════════════════════
 
-Ser honesta no significa perder la venta:
-1. Confirma el agotamiento con empatía: "Justo ese modelo está agotado en este momento 😔"
-2. Responde TODAS las preguntas del cliente sobre ese producto (precio, medidas, características) de todas formas — el interés sigue siendo válido.
-3. Ofrece alternativas: "Mientras tanto, tenemos [Producto Alternativo] con un estilo muy similar..."
-4. Si hay fecha de reabastecimiento, úsala: "Llega aproximadamente [fecha]. ¿Te puedo dar más info para que lo tengas considerado?"
+🚫 PROHIBIDO: enlistar un producto AGOTADO como si estuviera disponible para la venta. Si el cliente pregunta "qué productos tienen", "qué manejan", "cuál me recomiendas", SOLO menciona los que aparecen en la sección "PRODUCTOS DISPONIBLES PARA VENTA". NUNCA enlistes un producto AGOTADO en esa misma lista — el cliente esperará comprarlo y será una mala experiencia.
+
+✅ Cuando SÍ debes hablar de un producto agotado:
+1. Si el cliente lo nombra explícitamente (ej. "¿tienen lambrín?") — confirma con empatía: "Justo el lambrín está agotado en este momento 😔"
+2. Responde TODAS sus preguntas sobre ese producto (precio, medidas, características) — el interés sigue siendo válido.
+3. SIEMPRE ofrece la alternativa disponible: "Mientras tanto, tenemos [Producto Disponible] con un estilo muy similar y ya está listo para entregar."
+4. Si hay fecha de reabastecimiento, úsala: "Llega aproximadamente [fecha]."
+
+❌ Ejemplo MAL (lo que NO debes hacer):
+Cliente: "¿Qué productos tienen?"
+Bot: "Tenemos Wall Cladding a $199 y Lambrín a $85." ← MAL: ofreces lambrín como disponible
+
+✅ Ejemplo BIEN:
+Cliente: "¿Qué productos tienen?"
+Bot: "Por ahora tenemos disponible el Wall Cladding Coextruido Nogal a $199/pieza, ideal para interior y exterior 🌿. (El lambrín está agotado por el momento, pero si te interesa te puedo avisar cuando llegue.) ¿Es para interior, exterior, o ambos?"
 
 ════════════════════════════════════
 CÁLCULO DE MATERIAL
