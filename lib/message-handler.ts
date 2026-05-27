@@ -38,13 +38,20 @@ export async function handleIncomingMessage(
   const { from, messageId, text, contactName } = messageData;
 
   console.log(`📩 Message from ${from} (${contactName}): ${text}`);
+  console.log(`[trace] messageId=${messageId} — checking duplicate…`);
 
   // 2. Verificar duplicados
-  const alreadyProcessed = await isMessageProcessed(messageId);
+  let alreadyProcessed = false;
+  try {
+    alreadyProcessed = await isMessageProcessed(messageId);
+  } catch (e) {
+    console.warn(`[trace] isMessageProcessed threw, treating as new:`, e);
+  }
   if (alreadyProcessed) {
     console.log(`⏭️ Skipping duplicate message: ${messageId}`);
     return;
   }
+  console.log(`[trace] not duplicate — proceeding to AI pipeline`);
 
   try {
     // 3. Obtener o crear conversación (con fallback)
@@ -122,6 +129,7 @@ export async function handleIncomingMessage(
     }
 
     // 7. Generar respuesta con IA
+    console.log(`[trace] calling generateResponse with ${products.length} products, ${faqs.length} faqs, ${recentMessages.length} history`);
     const aiResponse = await generateResponse(
       text,
       products,

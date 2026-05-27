@@ -119,6 +119,7 @@ export async function generateResponse(
   businessSettings: Record<string, string>,
   knowledgeFragments: KnowledgeFragment[]
 ): Promise<AIResponse> {
+  console.log(`[ai] generateResponse entered. AI_GATEWAY_API_KEY present: ${!!process.env.AI_GATEWAY_API_KEY}, VERCEL_OIDC_TOKEN present: ${!!process.env.VERCEL_OIDC_TOKEN}`);
   const productContext = buildProductContext(products);
   const faqContext = buildFAQContext(faqs);
   const businessContext = buildBusinessContext(businessSettings);
