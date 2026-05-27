@@ -1,9 +1,6 @@
-import Groq from "groq-sdk";
+import { generateText } from "ai";
+import { gateway } from "@ai-sdk/gateway";
 import type { Product, FAQ, Message, AIResponse, KnowledgeFragment } from "./types";
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || "dummy_key_to_prevent_crash_at_build",
-});
 
 // ============================================
 // Context Builders
@@ -17,7 +14,7 @@ function buildProductContext(products: Product[]): string {
       const disponibilidad = p.availability;
       let stockStatus = disponibilidad === "agotado" ? "⚠️ AGOTADO" : "Disponible";
       if (disponibilidad === "próximamente") stockStatus = "⏳ Próximamente";
-      
+
       let priceInfo = `Precio por ${p.unit}: $${p.price} MXN`;
       if (p.price_per_box) {
         priceInfo += ` | Precio por caja: $${p.price_per_box} MXN`;
@@ -63,43 +60,50 @@ function buildMessageHistory(messages: Message[]): { role: "user" | "assistant";
 }
 
 // ============================================
-// Main Response Generator
+// Multi-provider LLM call via Vercel AI Gateway
 // ============================================
+//
+// Orden de proveedores: Claude Haiku 4.5 (primario) → Gemini 2.5 Flash → Groq Llama 3.3.
+// Si uno falla (rate limit, timeout, error 5xx), se intenta el siguiente automáticamente.
+// Configurar AI_GATEWAY_API_KEY en Vercel para activar el routing.
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const PROVIDER_CHAIN = [
+  "anthropic/claude-haiku-4-5",
+  "google/gemini-2.5-flash",
+  "groq/llama-3.3-70b-versatile",
+] as const;
 
-// Retry con backoff cuando Groq devuelve 429 (rate limit)
-async function callGroqWithRetry(
-  messages: { role: "system" | "user" | "assistant"; content: string }[],
-  retries = 3
+async function callLLMWithFailover(
+  systemPrompt: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  userMessage: string,
 ): Promise<string> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  const messages = [...history, { role: "user" as const, content: userMessage }];
+  let lastError: unknown = null;
+
+  for (const modelId of PROVIDER_CHAIN) {
     try {
-      const completion = await groq.chat.completions.create({
-        // llama-3.3-70b-versatile sigue instrucciones complejas de personalidad mucho mejor que 8b-instant
-        model: "llama-3.3-70b-versatile",
+      const { text } = await generateText({
+        model: gateway(modelId),
+        system: systemPrompt,
         messages,
         temperature: 0.5,
-        max_tokens: 512,
-        response_format: { type: "json_object" },
+        maxOutputTokens: 512,
       });
-      return completion.choices[0]?.message?.content || "";
-    } catch (err: unknown) {
-      const error = err as { status?: number; message?: string };
-      const is429 = error?.status === 429 || String(error?.message).includes("429");
-
-      if (is429 && attempt < retries) {
-        const wait = attempt * 3000;
-        console.warn(`⚠️ Groq 429 rate limit — reintentando en ${wait / 1000}s (intento ${attempt}/${retries})`);
-        await sleep(wait);
-        continue;
-      }
-
-      throw err;
+      return text;
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`⚠️ AI Gateway: falló ${modelId} → ${msg}. Probando siguiente proveedor…`);
     }
   }
-  throw new Error("Groq: máximo de reintentos alcanzado");
+
+  throw lastError ?? new Error("AI Gateway: todos los proveedores fallaron");
 }
+
+// ============================================
+// Main Response Generator
+// ============================================
 
 export async function generateResponse(
   userMessage: string,
@@ -238,14 +242,15 @@ INTENCIONES:
   const history = buildMessageHistory(recentMessages);
 
   try {
-    const rawResponse = await callGroqWithRetry([
-      { role: "system", content: SYSTEM_PROMPT },
-      ...history,
-      { role: "user", content: userMessage },
-    ]);
+    const rawResponse = await callLLMWithFailover(SYSTEM_PROMPT, history, userMessage);
+
+    // Algunos modelos a veces envuelven el JSON en markdown ``` o agregan texto extra.
+    // Extraemos el primer objeto JSON válido del string.
+    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+    const candidate = jsonMatch ? jsonMatch[0] : rawResponse;
 
     try {
-      const parsed = JSON.parse(rawResponse) as AIResponse;
+      const parsed = JSON.parse(candidate) as AIResponse;
       return {
         message: parsed.message || "Disculpa, ¿podrías repetir tu pregunta? 😊",
         intent: parsed.intent || "browsing",
@@ -259,8 +264,7 @@ INTENCIONES:
       };
     }
   } catch (error) {
-    console.error("Groq API error:", error);
-    // Fallback using business phone if available
+    console.error("AI Gateway error (todos los proveedores fallaron):", error);
     const phoneInfo = businessSettings['phone_1'] ? `al ${businessSettings['phone_1']}` : "a la tienda";
     return {
       message: `Uy, tuve un problema técnico ahorita 😅 ¿Me lo repites en un momento? Si urge, puedes llamarnos ${phoneInfo}.`,
@@ -269,4 +273,3 @@ INTENCIONES:
     };
   }
 }
-

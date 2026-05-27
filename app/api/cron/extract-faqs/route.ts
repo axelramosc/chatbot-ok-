@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "../../../../lib/supabase";
-import Groq from "groq-sdk";
+import { generateText } from "ai";
+import { gateway } from "@ai-sdk/gateway";
 
 export async function GET(request: Request) {
   // Verificación de seguridad para Cron Job (Vercel manda un header específico)
@@ -9,8 +10,6 @@ export async function GET(request: Request) {
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
-
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "dummy_key_to_prevent_crash_at_build" });
 
   try {
     // 1. Obtener mensajes de las últimas 24 horas del usuario
@@ -42,20 +41,27 @@ export async function GET(request: Request) {
     Si no hay preguntas relevantes, devuelve [].
     `;
 
-    const chatCompletion = await groq.chat.completions.create({
-      messages: [{ role: "system", content: prompt }],
-      model: "llama-3.3-70b-versatile",
+    const { text } = await generateText({
+      model: gateway("anthropic/claude-haiku-4-5"),
+      system: prompt,
+      messages: [{ role: "user", content: "Extrae las FAQs ahora." }],
       temperature: 0.1,
-      response_format: { type: "json_object" }
+      maxOutputTokens: 512,
     });
 
     let extractedFaqs: string[] = [];
     try {
-      const result = JSON.parse(chatCompletion.choices[0]?.message?.content || "{}");
-      // Manejar el formato de la respuesta, buscando algún array de strings.
-      extractedFaqs = Object.values(result).find(val => Array.isArray(val)) as string[] || [];
+      const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      const candidate = jsonMatch ? jsonMatch[0] : text;
+      const result = JSON.parse(candidate);
+      if (Array.isArray(result)) {
+        extractedFaqs = result as string[];
+      } else {
+        // Manejar el formato wrapper { "faqs": [...] }
+        extractedFaqs = (Object.values(result).find(val => Array.isArray(val)) as string[]) || [];
+      }
     } catch (e) {
-      console.error("Error parsing Groq response", e);
+      console.error("Error parsing LLM response", e);
     }
 
     if (extractedFaqs.length === 0) {
