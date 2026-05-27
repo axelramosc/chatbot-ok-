@@ -8,10 +8,11 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^3.0.120",
     "@heroicons/react": "^2.2.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.3",
-    "groq-sdk": "^1.1.2",
+    "ai": "^6.0.191",
     "lucide-react": "^1.16.0",
     "next": "16.2.5",
     "react": "^19.2.6",
@@ -22,6 +23,7 @@
     "@types/react": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.5",
+    "playwright": "^1.60.0",
     "typescript": "^5"
   }
 }
