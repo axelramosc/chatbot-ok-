@@ -134,7 +134,8 @@ export async function handleIncomingMessage(
       recentMessages,
       conversation.customer_name || contactName,
       businessSettings,
-      knowledgeFragments
+      knowledgeFragments,
+      { conversationId: conversation.id, phoneNumber: from },
     );
 
     console.log(`🤖 Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);

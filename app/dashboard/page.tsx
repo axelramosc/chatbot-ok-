@@ -23,6 +23,30 @@ const STATUS_MAP: Record<string, { bg: string; color: string; label: string }> =
   closed:       { bg: "#f4f4f5", color: "#71717a", label: "Cerrado" },
 };
 
+const CHANNEL_MAP: Record<string, { label: string; color: string; bg: string }> = {
+  whatsapp:  { label: "WhatsApp",  color: "#166534", bg: "#dcfce7" },
+  messenger: { label: "Messenger", color: "#1d4ed8", bg: "#dbeafe" },
+  instagram: { label: "Instagram", color: "#9d174d", bg: "#fce7f3" },
+};
+
+// Manual customer status set by staff. Persistent; the bot never overwrites it.
+const CUSTOMER_STATUS_OPTIONS: Array<{
+  value: "venta" | "avisar_restock" | "cotizacion" | "cerrado" | "distribuidor";
+  label: string;
+  bg: string;
+  color: string;
+  border: string;
+}> = [
+  { value: "venta",          label: "Venta",            bg: "#dcfce7", color: "#15803d", border: "#86efac" },
+  { value: "avisar_restock", label: "Avisar restock",   bg: "#fef3c7", color: "#a16207", border: "#fde68a" },
+  { value: "cotizacion",     label: "Cotización",       bg: "#dbeafe", color: "#1d4ed8", border: "#bfdbfe" },
+  { value: "cerrado",        label: "Cerrado",          bg: "#e4e4e7", color: "#3f3f46", border: "#d4d4d8" },
+  { value: "distribuidor",   label: "Distribuidor",     bg: "#ede9fe", color: "#6d28d9", border: "#ddd6fe" },
+];
+
+const customerStatusMeta = (value: string | null | undefined) =>
+  CUSTOMER_STATUS_OPTIONS.find((o) => o.value === value);
+
 const getStatus = (s: string) =>
   STATUS_MAP[s] ?? { bg: "#f4f4f5", color: "#71717a", label: s };
 
@@ -153,12 +177,11 @@ export default function InboxPage() {
     setTimeout(scrollToBottom, 100);
 
     try {
-      const res = await fetch("/api/send-message", {
+      const res = await fetch("/api/send-message-v2", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversation_id: selectedConv.id,
-          phone_number: selectedConv.phone_number,
           content,
         }),
       });
@@ -171,6 +194,27 @@ export default function InboxPage() {
       setInputText(content);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleChangeCustomerStatus = async (
+    value: "venta" | "avisar_restock" | "cotizacion" | "cerrado" | "distribuidor" | "",
+  ) => {
+    if (!selectedConv) return;
+    const nextValue = value === "" ? null : value;
+    const updatedConv = { ...selectedConv, customer_status: nextValue };
+    setSelectedConv(updatedConv);
+    setConversations((prev) =>
+      prev.map((c) => (c.id === updatedConv.id ? updatedConv : c)),
+    );
+    const { error } = await supabase
+      .from("conversations")
+      .update({ customer_status: nextValue })
+      .eq("id", selectedConv.id);
+    if (error) {
+      toast("No se pudo actualizar el estatus del cliente.", "error");
+    } else {
+      toast(nextValue ? "Estatus del cliente actualizado." : "Estatus del cliente eliminado.", "success");
     }
   };
 
@@ -295,12 +339,37 @@ export default function InboxPage() {
                 {conv.customer_name && (
                   <div className="crm-conv-phone">{conv.phone_number}</div>
                 )}
-                <span
-                  className="crm-conv-badge"
-                  style={{ background: st.bg, color: st.color }}
-                >
-                  {st.label}
-                </span>
+                <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                  <span
+                    className="crm-conv-badge"
+                    style={{ background: st.bg, color: st.color }}
+                  >
+                    {st.label}
+                  </span>
+                  {conv.channel && conv.channel !== "whatsapp" && (() => {
+                    const ch = CHANNEL_MAP[conv.channel] ?? { label: conv.channel, color: "#71717a", bg: "#f4f4f5" };
+                    return (
+                      <span
+                        className="crm-conv-badge"
+                        style={{ background: ch.bg, color: ch.color }}
+                      >
+                        {ch.label}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    const meta = customerStatusMeta(conv.customer_status);
+                    if (!meta) return null;
+                    return (
+                      <span
+                        className="crm-conv-badge"
+                        style={{ background: meta.bg, color: meta.color }}
+                      >
+                        {meta.label}
+                      </span>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           );
@@ -356,11 +425,38 @@ export default function InboxPage() {
                     : selectedConv.status}
                 </span>
               </div>
-              {selectedConv.status !== "active" && (
-                <button onClick={handleReactivateBot} className="crm-reactivate-btn">
-                  Reactivar Ava
-                </button>
-              )}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                {(() => {
+                  const meta = customerStatusMeta(selectedConv.customer_status);
+                  return (
+                    <select
+                      value={selectedConv.customer_status ?? ""}
+                      onChange={(e) => handleChangeCustomerStatus(e.target.value as any)}
+                      title="Estatus del cliente (manual)"
+                      style={{
+                        padding: "0.35rem 0.6rem",
+                        borderRadius: "999px",
+                        border: `1px solid ${meta?.border ?? "var(--border-color)"}`,
+                        background: meta?.bg ?? "white",
+                        color: meta?.color ?? "var(--text-muted)",
+                        fontSize: "0.78rem",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <option value="">Sin estatus</option>
+                      {CUSTOMER_STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  );
+                })()}
+                {selectedConv.status !== "active" && (
+                  <button onClick={handleReactivateBot} className="crm-reactivate-btn">
+                    Reactivar Ava
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Messages */}

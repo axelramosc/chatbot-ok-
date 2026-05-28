@@ -1,6 +1,9 @@
 import { generateText } from "ai";
 import { gateway } from "@ai-sdk/gateway";
 import type { Product, FAQ, Message, AIResponse, KnowledgeFragment } from "./types";
+import { getSupabase } from "./supabase";
+
+const PROVIDER_TIMEOUT_MS = 20_000;
 
 // ============================================
 // Context Builders
@@ -97,10 +100,18 @@ const PROVIDER_CHAIN = [
   "meta/llama-3.3-70b",
 ] as const;
 
+export interface ProviderAttempt {
+  model: string;
+  status: number | string;
+  duration_ms: number;
+  message: string;
+}
+
 async function callLLMWithFailover(
   systemPrompt: string,
   history: { role: "user" | "assistant"; content: string }[],
   userMessage: string,
+  attempts: ProviderAttempt[],
 ): Promise<string> {
   const messages = [...history, { role: "user" as const, content: userMessage }];
   let lastError: unknown = null;
@@ -108,6 +119,8 @@ async function callLLMWithFailover(
   for (const modelId of PROVIDER_CHAIN) {
     const t0 = Date.now();
     console.log(`🤖 AI Gateway: intentando ${modelId}…`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
     try {
       const { text } = await generateText({
         model: gateway(modelId),
@@ -115,19 +128,47 @@ async function callLLMWithFailover(
         messages,
         temperature: 0.5,
         maxOutputTokens: 512,
+        abortSignal: controller.signal,
       });
       console.log(`✅ AI Gateway: ${modelId} respondió OK en ${Date.now() - t0}ms`);
       return text;
     } catch (err) {
       lastError = err;
-      const e = err as { status?: number; statusCode?: number; message?: string; responseBody?: unknown };
-      const status = e?.status ?? e?.statusCode ?? "unknown";
+      const e = err as { status?: number; statusCode?: number; message?: string; name?: string; responseBody?: unknown };
+      const status = e?.status ?? e?.statusCode ?? (e?.name === "AbortError" ? "timeout" : "unknown");
       const body = typeof e?.responseBody === "string" ? e.responseBody.slice(0, 300) : "";
-      console.warn(`⚠️ AI Gateway: falló ${modelId} (status=${status}, ${Date.now() - t0}ms) → ${e?.message ?? err}. body=${body}`);
+      const message = e?.message ?? String(err);
+      console.warn(`⚠️ AI Gateway: falló ${modelId} (status=${status}, ${Date.now() - t0}ms) → ${message}. body=${body}`);
+      attempts.push({ model: modelId, status, duration_ms: Date.now() - t0, message });
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   throw lastError ?? new Error("AI Gateway: todos los proveedores fallaron");
+}
+
+async function logAiError(input: {
+  conversationId?: string | null;
+  phoneNumber?: string | null;
+  userMessage: string;
+  errorKind: string;
+  errorMessage: string;
+  providerChain: ProviderAttempt[];
+}) {
+  try {
+    const supabase = getSupabase();
+    await supabase.from("ai_error_logs").insert({
+      conversation_id: input.conversationId ?? null,
+      phone_number: input.phoneNumber ?? null,
+      user_message: input.userMessage.slice(0, 2000),
+      error_kind: input.errorKind,
+      error_message: input.errorMessage.slice(0, 2000),
+      provider_chain: input.providerChain,
+    });
+  } catch (logErr) {
+    console.error("⚠️ No se pudo persistir ai_error_logs:", logErr);
+  }
 }
 
 // ============================================
@@ -141,7 +182,8 @@ export async function generateResponse(
   recentMessages: Message[],
   customerName: string | null,
   businessSettings: Record<string, string>,
-  knowledgeFragments: KnowledgeFragment[]
+  knowledgeFragments: KnowledgeFragment[],
+  errorContext?: { conversationId?: string | null; phoneNumber?: string | null },
 ): Promise<AIResponse> {
   const productContext = buildProductContext(products);
   const faqContext = buildFAQContext(faqs);
@@ -279,9 +321,10 @@ INTENCIONES:
 - "representative": el cliente pide hablar con un representante o persona humana`;
 
   const history = buildMessageHistory(recentMessages);
+  const attempts: ProviderAttempt[] = [];
 
   try {
-    const rawResponse = await callLLMWithFailover(SYSTEM_PROMPT, history, userMessage);
+    const rawResponse = await callLLMWithFailover(SYSTEM_PROMPT, history, userMessage, attempts);
 
     // Algunos modelos a veces envuelven el JSON en markdown ``` o agregan texto extra.
     // Extraemos el primer objeto JSON válido del string.
@@ -304,6 +347,15 @@ INTENCIONES:
     }
   } catch (error) {
     console.error("AI Gateway error (todos los proveedores fallaron):", error);
+    const errMsg = (error as Error)?.message ?? String(error);
+    await logAiError({
+      conversationId: errorContext?.conversationId,
+      phoneNumber: errorContext?.phoneNumber,
+      userMessage,
+      errorKind: "all_providers_failed",
+      errorMessage: errMsg,
+      providerChain: attempts,
+    });
     const phoneInfo = businessSettings['phone_1'] ? `al ${businessSettings['phone_1']}` : "a la tienda";
     return {
       message: `Uy, tuve un problema técnico ahorita 😅 ¿Me lo repites en un momento? Si urge, puedes llamarnos ${phoneInfo}.`,

@@ -50,6 +50,11 @@ export interface WhatsAppStatus {
 }
 
 // ============================================
+// Channel Types
+// ============================================
+export type ChannelName = 'whatsapp' | 'messenger' | 'instagram';
+
+// ============================================
 // Database Types
 // ============================================
 export interface Product {
@@ -92,12 +97,21 @@ export interface FAQ {
   created_at: string;
 }
 
+export type CustomerStatus =
+  | "venta"
+  | "avisar_restock"
+  | "cotizacion"
+  | "cerrado"
+  | "distribuidor";
+
 export interface Conversation {
   id: string;
   phone_number: string;
   customer_name: string | null;
   status: "active" | "sale_pending" | "sale_completed" | "closed" | "attended";
+  customer_status: CustomerStatus | null;
   context: Record<string, unknown>;
+  channel?: string;
   created_at: string;
   updated_at: string;
 }
@@ -106,6 +120,7 @@ export interface Message {
   id: string;
   conversation_id: string;
   wa_message_id: string | null;
+  channel_message_id?: string | null;
   sender: "user" | "bot";
   content: string;
   message_type: string;
