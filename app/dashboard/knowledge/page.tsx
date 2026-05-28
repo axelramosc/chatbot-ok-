@@ -17,6 +17,19 @@ export default function KnowledgePage() {
   const [newFragmentTopic, setNewFragmentTopic] = useState("");
   const [savingFragment, setSavingFragment] = useState(false);
   const [savingFaq, setSavingFaq] = useState<string | null>(null);
+  const [conflictState, setConflictState] = useState<{
+    embedding: number[];
+    candidates: Array<{
+      source: "fragment" | "faq";
+      id: string;
+      topic: string | null;
+      question: string | null;
+      content: string;
+      similarity: number;
+      is_active: boolean;
+    }>;
+    decisions: Record<string, "keep" | "deactivate" | "delete">;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const supabase = createClient();
@@ -78,37 +91,103 @@ export default function KnowledgePage() {
     setSavingFaq(null);
   };
 
+  const persistFragment = async (
+    content: string,
+    topic: string,
+    embedding?: number[],
+    decisions: Array<{ source: "fragment" | "faq"; id: string; action: "keep" | "deactivate" | "delete" }> = [],
+    supersedesId: string | null = null,
+  ) => {
+    const res = await fetch("/api/knowledge/save-fragment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content,
+        topic: topic || null,
+        embedding,
+        decisions,
+        supersedesId,
+      }),
+    });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload?.detail || payload?.error || "save_failed");
+    return payload;
+  };
+
   const handleSendFragment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFragmentText.trim()) return;
+    const content = newFragmentText.trim();
+    if (!content) return;
+    const topic = newFragmentTopic.trim();
 
     setSavingFragment(true);
-
-    if (newFragmentTopic.trim()) {
-      await supabase
-        .from("knowledge_fragments")
-        .update({ is_active: false })
-        .eq("topic", newFragmentTopic.trim())
-        .eq("is_active", true);
-    }
-
-    const { error } = await supabase
-      .from("knowledge_fragments")
-      .insert({
-        content: newFragmentText.trim(),
-        topic: newFragmentTopic.trim() || null,
-        is_active: true,
+    try {
+      const res = await fetch("/api/knowledge/check-similar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content, topic: topic || null }),
       });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.detail || payload?.error || "check_failed");
 
-    if (error) {
-      toast("Error al guardar la nota.", "error");
-    } else {
+      const candidates = payload.candidates ?? [];
+      if (candidates.length > 0) {
+        const decisions: Record<string, "keep" | "deactivate" | "delete"> = {};
+        for (const c of candidates) decisions[`${c.source}:${c.id}`] = "deactivate";
+        setConflictState({ embedding: payload.embedding, candidates, decisions });
+        setSavingFragment(false);
+        return;
+      }
+
+      await persistFragment(content, topic, payload.embedding);
       toast("Ava ha aprendido la nueva información.", "success");
       setNewFragmentText("");
       setNewFragmentTopic("");
       await fetchFragments();
+    } catch (err) {
+      console.error(err);
+      toast("Error al guardar la nota.", "error");
+    } finally {
+      setSavingFragment(false);
     }
-    setSavingFragment(false);
+  };
+
+  const confirmConflictResolution = async () => {
+    if (!conflictState) return;
+    const content = newFragmentText.trim();
+    const topic = newFragmentTopic.trim();
+    setSavingFragment(true);
+    try {
+      const decisions = conflictState.candidates.map((c) => ({
+        source: c.source,
+        id: c.id,
+        action: conflictState.decisions[`${c.source}:${c.id}`] ?? "keep",
+      }));
+      const firstDeactivatedFragment = conflictState.candidates.find(
+        (c) => c.source === "fragment" && (conflictState.decisions[`${c.source}:${c.id}`] === "deactivate"),
+      );
+      await persistFragment(
+        content,
+        topic,
+        conflictState.embedding,
+        decisions,
+        firstDeactivatedFragment?.id ?? null,
+      );
+      toast("Conocimiento actualizado y conflictos resueltos.", "success");
+      setNewFragmentText("");
+      setNewFragmentTopic("");
+      setConflictState(null);
+      await fetchFragments();
+    } catch (err) {
+      console.error(err);
+      toast("Error al guardar la nota.", "error");
+    } finally {
+      setSavingFragment(false);
+    }
+  };
+
+  const setDecision = (key: string, action: "keep" | "deactivate" | "delete") => {
+    setConflictState((prev) => (prev ? { ...prev, decisions: { ...prev.decisions, [key]: action } } : prev));
   };
 
   const deactivateFragment = async (id: string) => {
@@ -122,6 +201,99 @@ export default function KnowledgePage() {
 
   return (
     <div style={{ padding: "2rem", overflowY: "auto", height: "100%", display: "flex", flexDirection: "column" }}>
+      {conflictState && (
+        <div
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setConflictState(null); }}
+        >
+          <div style={{
+            background: "white", borderRadius: "12px", padding: "1.5rem",
+            maxWidth: "720px", width: "92%", maxHeight: "85vh", overflowY: "auto",
+            boxShadow: "0 10px 40px rgba(0,0,0,0.25)",
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: "0.5rem" }}>Posible información contradictoria</h3>
+            <p style={{ color: "var(--text-muted)", marginTop: 0 }}>
+              Encontramos {conflictState.candidates.length} entrada{conflictState.candidates.length === 1 ? "" : "s"} similar{conflictState.candidates.length === 1 ? "" : "es"} a lo que estás por enseñar. Decide qué hacer con cada una antes de guardar.
+            </p>
+
+            <div style={{ background: "#f8f9fa", padding: "0.75rem", borderRadius: "8px", marginBottom: "1rem", fontSize: "0.85rem" }}>
+              <strong>Nuevo conocimiento:</strong>
+              <p style={{ margin: "0.25rem 0 0 0" }}>{newFragmentText.trim()}</p>
+              {newFragmentTopic.trim() && (
+                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>Tema: {newFragmentTopic.trim()}</div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {conflictState.candidates.map((c) => {
+                const key = `${c.source}:${c.id}`;
+                const action = conflictState.decisions[key] ?? "keep";
+                return (
+                  <div key={key} style={{ border: "1px solid var(--border-color)", borderRadius: "8px", padding: "0.75rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                      <span style={{
+                        fontSize: "0.7rem", padding: "2px 8px", borderRadius: "10px",
+                        background: c.source === "faq" ? "#e0eaff" : "#dff5e3",
+                        color: c.source === "faq" ? "#1d4ed8" : "#166534",
+                      }}>
+                        {c.source === "faq" ? "FAQ" : "Fragmento"}
+                      </span>
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        Similitud: {(c.similarity * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    {c.question && <p style={{ margin: "0 0 0.25rem 0", fontWeight: 600 }}>{c.question}</p>}
+                    <p style={{ margin: 0, fontSize: "0.9rem" }}>{c.content}</p>
+                    {c.topic && <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>Tema: {c.topic}</div>}
+
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+                      {(["keep", "deactivate", "delete"] as const).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setDecision(key, opt)}
+                          style={{
+                            padding: "4px 10px", fontSize: "0.8rem", borderRadius: "6px",
+                            border: "1px solid", borderColor: action === opt ? "var(--primary)" : "var(--border-color)",
+                            background: action === opt ? "var(--primary)" : "white",
+                            color: action === opt ? "white" : "var(--text-color)",
+                          }}
+                        >
+                          {opt === "keep" && "Mantener activo"}
+                          {opt === "deactivate" && "Desactivar (histórico)"}
+                          {opt === "delete" && "Eliminar"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end", marginTop: "1.25rem" }}>
+              <button
+                type="button"
+                onClick={() => setConflictState(null)}
+                style={{ background: "var(--text-muted)", color: "white" }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmConflictResolution}
+                disabled={savingFragment}
+                style={{ background: "var(--primary)", color: "white" }}
+              >
+                {savingFragment ? "Guardando..." : "Guardar y aplicar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ marginBottom: "2rem" }}>
         <h2 style={{ fontSize: "1.8rem", margin: "0 0 1.5rem 0" }}>Entrenamiento de Ava</h2>
 
