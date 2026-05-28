@@ -72,6 +72,48 @@ export async function sendTextMessage(
   }
 }
 
+export async function sendImageMessage(
+  to: string,
+  imageUrl: string,
+  caption?: string,
+): Promise<boolean> {
+  const normalizedTo = normalizeMexicanNumber(to);
+  try {
+    console.log(`🖼️ Sending image to ${normalizedTo}: ${imageUrl}`);
+    const body: Record<string, unknown> = {
+      messaging_product: "whatsapp",
+      to: normalizedTo,
+      type: "image",
+      image: { link: imageUrl },
+    };
+    if (caption && caption.trim()) {
+      (body.image as Record<string, unknown>).caption = caption.slice(0, 1024);
+    }
+
+    const response = await fetch(
+      `${GRAPH_API_URL}/${WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error(`❌ WhatsApp image send error:`, JSON.stringify(error));
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error("WhatsApp image send exception:", error);
+    return false;
+  }
+}
+
 export async function sendTemplateMessage(
   to: string,
   templateName: string,

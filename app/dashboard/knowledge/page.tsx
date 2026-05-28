@@ -259,6 +259,58 @@ export default function KnowledgePage() {
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
   };
 
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null);
+
+  const uploadProductImage = async (productId: string, file: File) => {
+    if (productId.startsWith("new-")) {
+      toast("Guarda primero el producto antes de subir una imagen.", "error");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast("La imagen no puede pesar más de 4 MB.", "error");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast("Solo se aceptan JPEG, PNG o WEBP.", "error");
+      return;
+    }
+
+    setUploadingImage(productId);
+    try {
+      const form = new FormData();
+      form.append("productId", productId);
+      form.append("file", file);
+      const res = await fetch("/api/products/upload-image", { method: "POST", body: form });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.detail || payload?.error || "upload_failed");
+      setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, image_url: payload.imageUrl } : p)));
+      toast("Imagen subida. Ava ya puede compartirla con los clientes.", "success");
+    } catch (err) {
+      console.error(err);
+      toast("No se pudo subir la imagen.", "error");
+    } finally {
+      setUploadingImage(null);
+    }
+  };
+
+  const removeProductImage = async (productId: string) => {
+    if (productId.startsWith("new-")) return;
+    if (!confirm("¿Quitar la imagen de este producto?")) return;
+    setUploadingImage(productId);
+    try {
+      const res = await fetch(`/api/products/upload-image?productId=${encodeURIComponent(productId)}`, { method: "DELETE" });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.detail || payload?.error || "delete_failed");
+      setProducts((prev) => prev.map((p) => (p.id === productId ? { ...p, image_url: null } : p)));
+      toast("Imagen eliminada.", "success");
+    } catch (err) {
+      console.error(err);
+      toast("No se pudo eliminar la imagen.", "error");
+    } finally {
+      setUploadingImage(null);
+    }
+  };
+
   const saveProduct = async (product: any) => {
     setSavingCatalog(product.id);
     const { id, created_at, updated_at, ...updateData } = product;
@@ -743,6 +795,65 @@ export default function KnowledgePage() {
                             onChange={(e) => handleProductChange(product.id, "description", e.target.value)}
                             style={{ width: "100%", minHeight: "60px", padding: "0.75rem", border: "1px solid var(--border-color)", borderRadius: "8px" }}
                           />
+                        </div>
+
+                        <div style={{ marginBottom: "1rem", padding: "0.75rem", background: "#f8f9fa", border: "1px dashed var(--border-color)", borderRadius: "8px" }}>
+                          <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", display: "block", marginBottom: "0.5rem" }}>
+                            Foto del producto (la que Ava enviará al cliente)
+                          </label>
+                          <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+                            {product.image_url ? (
+                              <img
+                                src={product.image_url}
+                                alt={product.name || "Producto"}
+                                style={{ width: "96px", height: "96px", objectFit: "cover", borderRadius: "8px", border: "1px solid var(--border-color)" }}
+                              />
+                            ) : (
+                              <div style={{ width: "96px", height: "96px", display: "flex", alignItems: "center", justifyContent: "center", border: "1px dashed var(--border-color)", borderRadius: "8px", color: "var(--text-muted)", fontSize: "0.75rem", textAlign: "center" }}>
+                                Sin imagen
+                              </div>
+                            )}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                              <label
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: "0.5rem",
+                                  padding: "0.5rem 0.85rem", background: "white",
+                                  border: "1px solid var(--border-color)", borderRadius: "8px",
+                                  cursor: product.id.startsWith("new-") || uploadingImage === product.id ? "not-allowed" : "pointer",
+                                  opacity: product.id.startsWith("new-") || uploadingImage === product.id ? 0.6 : 1,
+                                  fontSize: "0.85rem",
+                                }}
+                              >
+                                {uploadingImage === product.id ? "Subiendo…" : product.image_url ? "Cambiar imagen" : "Subir imagen"}
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp"
+                                  disabled={product.id.startsWith("new-") || uploadingImage === product.id}
+                                  onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) uploadProductImage(product.id, f);
+                                    e.target.value = "";
+                                  }}
+                                  style={{ display: "none" }}
+                                />
+                              </label>
+                              {product.image_url && (
+                                <button
+                                  onClick={() => removeProductImage(product.id)}
+                                  disabled={uploadingImage === product.id}
+                                  style={{ background: "transparent", color: "#dc3545", border: "1px solid #dc3545", padding: "0.4rem 0.75rem", borderRadius: "8px", fontSize: "0.8rem", cursor: "pointer" }}
+                                >
+                                  Quitar imagen
+                                </button>
+                              )}
+                              {product.id.startsWith("new-") && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                  Guarda el producto primero para subir foto.
+                                </span>
+                              )}
+                              <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>JPG / PNG / WEBP · máx. 4 MB</span>
+                            </div>
+                          </div>
                         </div>
 
                         <div style={{ display: "flex", justifyContent: "flex-end" }}>

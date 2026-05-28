@@ -16,12 +16,16 @@ function formatProductEntry(p: Product, stockLabel: string): string {
 
   const restock = p.restock_date ? ` (Llega en: ${p.restock_date})` : "";
   const coverage = p.coverage_per_piece ? `${p.coverage_per_piece} m² por pieza` : "N/A";
+  const imageHint = p.image_url
+    ? `📷 Imagen disponible — product_id para images_to_send: ${p.id}`
+    : `(sin imagen)`;
 
   return `- **${p.name}** (${p.category || "General"})
   ${priceInfo}
   Estado: ${stockLabel}${restock}
   Cobertura: ${coverage}
-  Descripción: ${p.description || "Sin descripción"}`;
+  Descripción: ${p.description || "Sin descripción"}
+  ${imageHint}`;
 }
 
 function buildProductContext(products: Product[]): string {
@@ -308,7 +312,14 @@ ${customerName ? `NOMBRE DEL CLIENTE: ${customerName}\n` : ""}
 FORMATO DE RESPUESTA (obligatorio, sin excepciones)
 ════════════════════════════════════
 Responde SIEMPRE en JSON puro, sin markdown ni backticks:
-{"message": "tu respuesta aquí", "intent": "greeting|browsing|interested|ready_to_buy|bought|unknown|support", "products_mentioned": ["nombre del producto si aplica"]}
+{"message": "tu respuesta aquí", "intent": "greeting|browsing|interested|ready_to_buy|bought|unknown|support", "products_mentioned": ["nombre del producto si aplica"], "images_to_send": ["uuid-del-producto si aplica"]}
+
+REGLAS DE IMÁGENES (campo "images_to_send"):
+• Si un producto del catálogo tiene "📷 Imagen disponible — product_id: <UUID>" y lo recomiendas o el cliente muestra interés concreto en él (intent "interested" o "ready_to_buy"), incluye su <UUID> en images_to_send.
+• NUNCA inventes IDs. Solo usa los UUIDs que aparecen literalmente en el catálogo. Si no ves un UUID asociado al producto, no incluyas nada.
+• Si el producto no tiene imagen (aparece "(sin imagen)"), no lo agregues a images_to_send.
+• Para saludos, exploración general o productos agotados/próximamente, deja images_to_send como array vacío [].
+• Cuando envíes imagen, menciónalo brevemente en el mensaje ("Aquí te mando una foto 📸") para que el cliente entienda.
 
 INTENCIONES:
 - "greeting": saludo inicial
@@ -333,16 +344,21 @@ INTENCIONES:
 
     try {
       const parsed = JSON.parse(candidate) as AIResponse;
+      const images = Array.isArray(parsed.images_to_send)
+        ? parsed.images_to_send.filter((s): s is string => typeof s === "string" && s.length > 0)
+        : [];
       return {
         message: parsed.message || "Disculpa, ¿podrías repetir tu pregunta? 😊",
         intent: parsed.intent || "browsing",
         products_mentioned: parsed.products_mentioned || [],
+        images_to_send: images,
       };
     } catch {
       return {
         message: rawResponse || "Disculpa, ¿podrías repetir tu pregunta?",
         intent: "browsing",
         products_mentioned: [],
+        images_to_send: [],
       };
     }
   } catch (error) {
@@ -361,6 +377,7 @@ INTENCIONES:
       message: `Uy, tuve un problema técnico ahorita 😅 ¿Me lo repites en un momento? Si urge, puedes llamarnos ${phoneInfo}.`,
       intent: "support",
       products_mentioned: [],
+      images_to_send: [],
     };
   }
 }

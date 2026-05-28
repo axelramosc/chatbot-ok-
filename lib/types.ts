@@ -146,6 +146,9 @@ export interface AIResponse {
   message: string;
   intent: "browsing" | "interested" | "ready_to_buy" | "bought" | "support" | "greeting" | "unknown";
   products_mentioned: string[];
+  // IDs de productos cuya imagen debe enviarse como attachment separado.
+  // El servidor valida que cada ID exista y tenga image_url antes de enviar.
+  images_to_send?: string[];
 }
 
 export interface ConversationContext {

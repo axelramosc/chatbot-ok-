@@ -1,4 +1,3 @@
-import { extractMessageData, sendTextMessage, sendImageMessage, type ExtractedMessage } from "./whatsapp";
 import {
   getOrCreateConversation,
   saveMessage,
@@ -7,83 +6,103 @@ import {
   getActiveFAQs,
   getBusinessSettings,
   getKnowledgeFragments,
-  isMessageProcessed,
   updateConversationStatus,
 } from "./database";
 import { getSupabase } from "./supabase";
 import { generateResponse } from "./ai";
-import { notifyAdminOfSale, notifyAdminOfUnknownQuery, notifyAdminOfRepresentativeRequest } from "./notifications";
-import type { WhatsAppWebhookPayload } from "./types";
+import {
+  notifyAdminOfSale,
+  notifyAdminOfUnknownQuery,
+  notifyAdminOfRepresentativeRequest,
+} from "./notifications";
+import type { NormalizedMessage, ChannelClient } from "./channels/types";
 
-// Intents que activan notificación de venta al admin
 const SALE_INTENTS = ["ready_to_buy", "bought"];
-
-// Intents que activan notificación de consulta sin respuesta al admin
 const UNKNOWN_INTENTS = ["unknown"];
-
-// Intents que activan notificación de solicitud de representante
 const REPRESENTATIVE_INTENTS = ["representative"];
 
-export async function handleIncomingMessage(
-  payload: WhatsAppWebhookPayload
+// Namespaced identifier stored in phone_number column per channel
+function buildChannelIdentifier(channel: string, senderId: string): string {
+  if (channel === "messenger") return `fb_psid_${senderId}`;
+  if (channel === "instagram") return `ig_igsid_${senderId}`;
+  return senderId;
+}
+
+// Deduplication using channel_message_id column (mirrors isMessageProcessed in database.ts)
+async function isChannelMessageProcessed(channelMessageId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  const { data } = await supabase
+    .from("messages")
+    .select("id")
+    .eq("channel_message_id", channelMessageId)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
+}
+
+export async function handleChannelMessage(
+  msg: NormalizedMessage,
+  client: ChannelClient
 ): Promise<void> {
-  // 1. Extraer datos del mensaje del webhook
-  const messageData: ExtractedMessage | null = extractMessageData(payload);
+  const { senderId, messageId, text, contactName, channel } = msg;
+  const identifier = buildChannelIdentifier(channel, senderId);
 
-  if (!messageData) {
-    // No es un mensaje de texto o es una actualización de estado — ignorar
-    return;
-  }
+  console.log(`📩 [${channel}] Message from ${senderId}: ${text}`);
 
-  const { from, messageId, text, contactName } = messageData;
-
-  console.log(`📩 Message from ${from} (${contactName}): ${text}`);
-
-  // 2. Verificar duplicados (con guarda para que un error en DB no rompa el flujo)
-  let alreadyProcessed = false;
-  try {
-    alreadyProcessed = await isMessageProcessed(messageId);
-  } catch (e) {
-    console.warn(`⚠️ isMessageProcessed threw, treating as new:`, e);
-  }
+  // 1. Deduplicate
+  const alreadyProcessed = await isChannelMessageProcessed(messageId);
   if (alreadyProcessed) {
-    console.log(`⏭️ Skipping duplicate message: ${messageId}`);
+    console.log(`⏭️ Skipping duplicate [${channel}] message: ${messageId}`);
     return;
   }
 
   try {
-    // 3. Obtener o crear conversación (con fallback)
+    // 2. Get or create conversation (with fallback)
     let conversation;
     try {
-      conversation = await getOrCreateConversation(from, contactName);
+      conversation = await getOrCreateConversation(identifier, contactName);
+
+      // Ensure channel column is set correctly (new conversations default to 'whatsapp')
+      const supabase = getSupabase();
+      await supabase
+        .from("conversations")
+        .update({ channel, updated_at: new Date().toISOString() })
+        .eq("id", conversation.id);
+
+      conversation.channel = channel;
     } catch (e) {
-      console.error(`⚠️ Database error getting conversation for ${from}:`, e);
-      // Fallback minimal conversation to keep the bot running
+      console.error(`⚠️ DB error getting conversation for ${identifier}:`, e);
       conversation = {
         id: "fallback-id",
-        phone_number: from,
+        phone_number: identifier,
         customer_name: contactName || null,
-        status: "active",
+        status: "active" as const,
         context: {},
+        channel,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     }
 
-    // 4. ALWAYS save the incoming message — non-critical
+    // 3. Save incoming message with channel_message_id for deduplication
     try {
-      await saveMessage(conversation.id, "user", text, messageId);
-
       const supabase = getSupabase();
+      await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        sender: "user",
+        content: text,
+        channel_message_id: messageId,
+      });
+
       await supabase
         .from("conversations")
         .update({ updated_at: new Date().toISOString() })
         .eq("id", conversation.id);
     } catch (e) {
-      console.warn(`⚠️ Non-critical error saving incoming message:`, e);
+      console.warn(`⚠️ Non-critical error saving incoming [${channel}] message:`, e);
     }
 
-    // 5. Fresh status check from DB (non-critical)
+    // 4. Fresh status check
     let currentStatus = conversation.status;
     try {
       const supabase = getSupabase();
@@ -97,12 +116,16 @@ export async function handleIncomingMessage(
       console.warn(`⚠️ Non-critical error checking conversation status:`, e);
     }
 
-    if (currentStatus === "attended" || currentStatus === "sale_completed" || currentStatus === "closed") {
+    if (
+      currentStatus === "attended" ||
+      currentStatus === "sale_completed" ||
+      currentStatus === "closed"
+    ) {
       console.log(`⏭️ Bot paused. Conversation ${conversation.id} status is: ${currentStatus}.`);
       return;
     }
 
-    // 6. Obtener contexto en paralelo (non-critical)
+    // 5. Fetch context in parallel
     let recentMessages: any[] = [];
     let products: any[] = [];
     let faqs: any[] = [];
@@ -111,10 +134,10 @@ export async function handleIncomingMessage(
 
     try {
       const [rm, p, f, bs, kf] = await Promise.all([
-        getRecentMessages(conversation.id, 10).catch(e => { console.warn("Error fetching recent messages:", e); return []; }),
+        getRecentMessages(conversation.id, 10).catch(e => { console.warn("Error fetching messages:", e); return []; }),
         getActiveProducts().catch(e => { console.warn("Error fetching products:", e); return []; }),
         getActiveFAQs().catch(e => { console.warn("Error fetching FAQs:", e); return []; }),
-        getBusinessSettings().catch(e => { console.warn("Error fetching business settings:", e); return {}; }),
+        getBusinessSettings().catch(e => { console.warn("Error fetching settings:", e); return {}; }),
         getKnowledgeFragments().catch(e => { console.warn("Error fetching knowledge:", e); return []; }),
       ]);
       recentMessages = rm;
@@ -126,7 +149,7 @@ export async function handleIncomingMessage(
       console.warn(`⚠️ Error building AI context:`, e);
     }
 
-    // 7. Generar respuesta con IA
+    // 6. Generate AI response
     const aiResponse = await generateResponse(
       text,
       products,
@@ -135,12 +158,12 @@ export async function handleIncomingMessage(
       conversation.customer_name || contactName,
       businessSettings,
       knowledgeFragments,
-      { conversationId: conversation.id, phoneNumber: from },
+      { conversationId: conversation.id, phoneNumber: identifier },
     );
 
-    console.log(`🤖 Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
+    console.log(`🤖 [${channel}] Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
 
-    // 8. SECOND status check (non-critical)
+    // 7. Second status check (in case admin intervened during AI call)
     try {
       const supabase = getSupabase();
       const { data: recheckConv } = await supabase
@@ -149,7 +172,12 @@ export async function handleIncomingMessage(
         .eq("id", conversation.id)
         .single();
 
-      if (recheckConv && (recheckConv.status === "attended" || recheckConv.status === "sale_completed" || recheckConv.status === "closed")) {
+      if (
+        recheckConv &&
+        (recheckConv.status === "attended" ||
+          recheckConv.status === "sale_completed" ||
+          recheckConv.status === "closed")
+      ) {
         console.log(`⏭️ Bot paused (post-AI check). Status: ${recheckConv.status}.`);
         return;
       }
@@ -157,13 +185,14 @@ export async function handleIncomingMessage(
       console.warn(`⚠️ Non-critical error in post-AI status check:`, e);
     }
 
-    // 9. Guardar respuesta del bot + actualizar contexto del cliente (non-critical)
+    // 8. Save bot response
     try {
       await saveMessage(conversation.id, "bot", aiResponse.message);
     } catch (e) {
       console.warn(`⚠️ Non-critical error saving bot response:`, e);
     }
 
+    // 9. Update conversation context
     try {
       const supabase = getSupabase();
       const existingContext = (conversation.context as Record<string, unknown>) || {};
@@ -191,109 +220,95 @@ export async function handleIncomingMessage(
       console.warn(`⚠️ Non-critical error updating conversation context:`, e);
     }
 
-    // 10. Enviar respuesta al cliente vía WhatsApp
-    const sent = await sendTextMessage(from, aiResponse.message);
+    // 10. Send response via the appropriate channel
+    const sent = await client.sendMessage(senderId, aiResponse.message);
 
     if (!sent) {
-      console.error(`❌ Failed to send message to ${from}`);
+      console.error(`❌ Failed to send [${channel}] message to ${senderId}`);
       return;
     }
 
-    console.log(`✅ Response sent to ${from}`);
+    console.log(`✅ [${channel}] Response sent to ${senderId}`);
 
-    // 10b. Enviar imágenes de productos si el AI lo solicitó (non-critical).
-    //      Server-side validation: solo se envían IDs que existen en el catálogo
-    //      cargado y que tienen image_url no nulo. Si la URL falla, se ignora.
+    // 10b. Send product images if AI requested any (non-critical).
+    //      Validated server-side against the products array already in memory.
     try {
       const ids = aiResponse.images_to_send ?? [];
-      if (ids.length > 0) {
+      if (ids.length > 0 && typeof client.sendImage === "function") {
         const byId = new Map(products.map((p: any) => [p.id as string, p as any]));
         for (const id of ids.slice(0, 3)) {
           const prod = byId.get(id);
           if (!prod || !prod.image_url) {
-            console.log(`📷 Skipping image: product ${id} not found or has no image_url.`);
+            console.log(`📷 [${channel}] Skipping image: product ${id} missing or no image_url.`);
             continue;
           }
-          const ok = await sendImageMessage(from, prod.image_url as string);
-          if (!ok) console.warn(`📷 Failed to send image for product ${id} to ${from}`);
+          const ok = await client.sendImage(senderId, prod.image_url as string);
+          if (!ok) console.warn(`📷 [${channel}] Failed to send image for product ${id} to ${senderId}`);
         }
       }
     } catch (e) {
-      console.warn(`⚠️ Non-critical error sending product images:`, e);
+      console.warn(`⚠️ [${channel}] Non-critical error sending product images:`, e);
     }
 
-    // 11. Notificaciones al admin (non-critical)
+    // 11. Admin notifications (still sent via WhatsApp to the admin)
     try {
-      const allMessages = [...recentMessages, { sender: "user" as const, content: text }, { sender: "bot" as const, content: aiResponse.message }];
+      const allMessages = [
+        ...recentMessages,
+        { sender: "user" as const, content: text },
+        { sender: "bot" as const, content: aiResponse.message },
+      ];
       const summary = allMessages
         .slice(-6)
         .map((m) => `${m.sender === "user" ? "Cliente" : "Bot"}: ${m.content}`)
         .join("\n");
 
       if (SALE_INTENTS.includes(aiResponse.intent)) {
-        console.log(`🛒 Sale intent detected for ${from}! Notifying admin...`);
-        await updateConversationStatus(conversation.id, "sale_pending").catch(e => console.warn("Error updating status:", e));
+        console.log(`🛒 Sale intent detected for ${senderId} via ${channel}! Notifying admin...`);
+        await updateConversationStatus(conversation.id, "sale_pending").catch(e =>
+          console.warn("Error updating status:", e)
+        );
         await notifyAdminOfSale({
           conversationId: conversation.id,
-          phoneNumber: from,
+          phoneNumber: identifier,
           customerName: conversation.customer_name || contactName,
           productsInterested: aiResponse.products_mentioned,
-          conversationSummary: summary,
+          conversationSummary: `[${channel.toUpperCase()}]\n${summary}`,
         }).catch(e => console.warn("Error notifying sale:", e));
       }
 
       if (UNKNOWN_INTENTS.includes(aiResponse.intent)) {
-        console.log(`❓ Unknown query from ${from} — notifying admin...`);
         await notifyAdminOfUnknownQuery({
           conversationId: conversation.id,
-          phoneNumber: from,
+          phoneNumber: identifier,
           customerName: conversation.customer_name || contactName,
           question: text,
-          conversationSummary: summary,
+          conversationSummary: `[${channel.toUpperCase()}]\n${summary}`,
         }).catch(e => console.warn("Error notifying unknown query:", e));
       }
 
       if (REPRESENTATIVE_INTENTS.includes(aiResponse.intent)) {
-        console.log(`🙋 Representative request from ${from} — notifying admin...`);
         await notifyAdminOfRepresentativeRequest({
           conversationId: conversation.id,
-          phoneNumber: from,
+          phoneNumber: identifier,
           customerName: conversation.customer_name || contactName,
-          conversationSummary: summary,
+          conversationSummary: `[${channel.toUpperCase()}]\n${summary}`,
         }).catch(e => console.warn("Error notifying representative request:", e));
       }
     } catch (e) {
       console.warn(`⚠️ Non-critical error in admin notifications:`, e);
     }
-
   } catch (error) {
-    console.error(`❌ Error handling message from ${from}:`, error instanceof Error ? error.stack : JSON.stringify(error));
-
-    // Check if this conversation is being handled by admin before sending error message.
-    // If admin has control, stay silent — don't confuse the client with bot error messages.
-    try {
-      const supabase = getSupabase();
-      const { data: convRows } = await supabase
-        .from("conversations")
-        .select("status")
-        .eq("phone_number", from)
-        .not("status", "eq", "closed")
-        .order("updated_at", { ascending: false })
-        .limit(1);
-
-      const status = convRows?.[0]?.status;
-      if (status === "attended" || status === "sale_completed" || status === "closed") {
-        console.log(`🤫 Error occurred but conversation is ${status} — staying silent.`);
-        return;
-      }
-    } catch {
-      // If we can't check, fall through to send error message
-    }
-
-    // Only send error message if bot is actively handling the conversation
-    await sendTextMessage(
-      from,
-      "Disculpa, tuve un pequeño problema procesando tu mensaje 😅 Por favor intenta de nuevo en unos segundos, o visítanos directamente en tienda. ¡Con gusto te atendemos!"
+    console.error(
+      `❌ Error handling [${channel}] message from ${senderId}:`,
+      error instanceof Error ? error.stack : JSON.stringify(error)
     );
+
+    // Send fallback error message via the same channel
+    await client
+      .sendMessage(
+        senderId,
+        "Disculpa, tuve un pequeño problema procesando tu mensaje 😅 Por favor intenta de nuevo en unos segundos."
+      )
+      .catch(() => {});
   }
 }

@@ -1,0 +1,37 @@
+-- 003_product_images.sql
+-- Goal 03 — Imágenes de productos en el catálogo.
+--
+-- No hay DDL adicional: products.image_url (text, nullable) ya existe en la tabla.
+-- Esta migración solo documenta la configuración manual requerida en Supabase
+-- para que /api/products/upload-image pueda escribir y los canales puedan leer.
+--
+-- ACCIONES MANUALES REQUERIDAS (Supabase Dashboard → Storage):
+--
+-- 1. Crear bucket "product-images":
+--      Public bucket: TRUE
+--      File size limit: 5 MB
+--      Allowed MIME types: image/jpeg, image/png, image/webp
+--
+-- 2. Políticas RLS del bucket (Storage → Policies → product-images):
+--
+--    a) SELECT — Allow public read access
+--         Policy: bucket_id = 'product-images'
+--         Roles:  public, anon, authenticated
+--         (Esto permite que WhatsApp / Instagram / Messenger hagan fetch
+--          de la URL pública al entregar el attachment al cliente.)
+--
+--    b) INSERT / UPDATE / DELETE — Restringido a service_role
+--         No crear políticas para anon ni authenticated.
+--         La API route /api/products/upload-image usa SUPABASE_SERVICE_ROLE_KEY,
+--         que bypassa RLS y puede escribir sin política explícita.
+--
+-- 3. Path convention (impuesta server-side en la API route):
+--      {productId}/{timestamp}-{originalFilename}
+--    El UUID del producto + timestamp evitan colisiones y hacen el path
+--    suficientemente opaco para no exponer un listado público.
+--
+-- 4. Razón por la que el bucket es público (no firmado):
+--      Las imágenes son material de marketing, no datos sensibles.
+--      WhatsApp/Instagram/Messenger requieren una URL fetcheable al momento
+--      de entregar el mensaje; signed URLs con expiración romperían entregas
+--      retardadas o reintentos. La oscuridad del path es suficiente protección.
