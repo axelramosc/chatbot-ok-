@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "../../lib/supabase-client";
-import { ChevronLeft, Send, MessageSquare, Paperclip, X } from "lucide-react";
+import { ChevronLeft, Send, MessageSquare, Paperclip, X, MoreVertical, Eraser, Trash2 } from "lucide-react";
 import { useToast } from "../components/toast";
 
 const getInitials = (name: string, phone: string) => {
@@ -65,6 +65,8 @@ export default function InboxPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showChat, setShowChat] = useState(false);
   const [search, setSearch] = useState("");
+  // Conversation whose 3-dot menu is open (null = none).
+  const [menuConvId, setMenuConvId] = useState<string | null>(null);
   const toast = useToast();
   const supabase = createClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -338,6 +340,51 @@ export default function InboxPage() {
     }
   };
 
+  // Borra todos los mensajes de una conversación pero conserva la conversación
+  // en la bandeja (limpia el historial del chat). Acción destructiva: confirma.
+  const handleClearHistory = async (conv: any) => {
+    setMenuConvId(null);
+    const label = conv.customer_name || conv.phone_number;
+    if (!window.confirm(`¿Limpiar el historial de mensajes de ${label}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    const { error } = await supabase
+      .from("messages")
+      .delete()
+      .eq("conversation_id", conv.id);
+    if (error) {
+      toast("No se pudo limpiar el historial.", "error");
+      return;
+    }
+    if (selectedConv?.id === conv.id) setMessages([]);
+    toast("Historial limpiado.", "success");
+  };
+
+  // Elimina por completo la conversación de la bandeja. La BD borra en cascada
+  // los mensajes y el sales_lead asociados (FK ON DELETE CASCADE). Irreversible.
+  const handleDeleteConversation = async (conv: any) => {
+    setMenuConvId(null);
+    const label = conv.customer_name || conv.phone_number;
+    if (!window.confirm(`¿Eliminar por completo la conversación con ${label}? Se borrarán también sus mensajes. Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    const { error } = await supabase
+      .from("conversations")
+      .delete()
+      .eq("id", conv.id);
+    if (error) {
+      toast("No se pudo eliminar la conversación.", "error");
+      return;
+    }
+    setConversations((prev) => prev.filter((c) => c.id !== conv.id));
+    if (selectedConv?.id === conv.id) {
+      setSelectedConv(null);
+      setMessages([]);
+      setShowChat(false);
+    }
+    toast("Conversación eliminada.", "success");
+  };
+
   // KPI calculations
   const kpi = {
     total: conversations.length,
@@ -357,6 +404,11 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-full w-full">
+
+      {/* Click-away layer to dismiss the open 3-dot menu */}
+      {menuConvId && (
+        <div className="crm-conv-menu-backdrop" onClick={() => setMenuConvId(null)} />
+      )}
 
       {/* ── Conversation list ── */}
       <div className={`crm-conversations-panel ${showChat ? "crm-panel-hidden" : ""}`}>
@@ -472,6 +524,42 @@ export default function InboxPage() {
                     );
                   })()}
                 </div>
+              </div>
+
+              {/* 3-dot menu — clear history / delete conversation */}
+              <div className="crm-conv-menu-wrap">
+                <button
+                  type="button"
+                  className="crm-conv-menu-btn"
+                  title="Opciones"
+                  aria-label="Opciones de la conversación"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuConvId((id) => (id === conv.id ? null : conv.id));
+                  }}
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {menuConvId === conv.id && (
+                  <div className="crm-conv-menu" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="crm-conv-menu-item"
+                      onClick={() => handleClearHistory(conv)}
+                    >
+                      <Eraser size={15} />
+                      Limpiar historial
+                    </button>
+                    <button
+                      type="button"
+                      className="crm-conv-menu-item crm-conv-menu-danger"
+                      onClick={() => handleDeleteConversation(conv)}
+                    >
+                      <Trash2 size={15} />
+                      Eliminar de la bandeja
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

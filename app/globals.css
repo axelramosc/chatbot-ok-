@@ -408,6 +408,83 @@ select {
   letter-spacing: 0.02em;
 }
 
+/* Conversation 3-dot menu */
+.crm-conv-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.crm-conv-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.crm-conv-menu-btn:hover {
+  background: var(--primary-100);
+  color: var(--text-color);
+}
+
+.crm-conv-menu {
+  position: absolute;
+  top: 34px;
+  right: 0;
+  z-index: 30;
+  min-width: 200px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.crm-conv-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--text-color);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.crm-conv-menu-item:hover {
+  background: var(--primary-50);
+}
+
+.crm-conv-menu-danger {
+  color: #dc2626;
+}
+
+.crm-conv-menu-danger:hover {
+  background: #fef2f2;
+}
+
+.crm-conv-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
 
 /* ══════════════════════════════════════
    INBOX — CHAT AREA
