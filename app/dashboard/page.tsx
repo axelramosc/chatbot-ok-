@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "../../lib/supabase-client";
-import { ChevronLeft, Send, MessageSquare } from "lucide-react";
+import { ChevronLeft, Send, MessageSquare, Paperclip, X } from "lucide-react";
 import { useToast } from "../components/toast";
 
 const getInitials = (name: string, phone: string) => {
@@ -59,6 +59,10 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  // Imagen adjunta manual para enviar vía Ava (/ava). Se sube primero y se manda al confirmar.
+  const [pendingImage, setPendingImage] = useState<{ url: string; name: string } | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showChat, setShowChat] = useState(false);
   const [search, setSearch] = useState("");
   const toast = useToast();
@@ -155,35 +159,83 @@ export default function InboxPage() {
   const scrollToBottom = () =>
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
+  // Sube una imagen adjunta para enviarla luego vía Ava (/ava). Queda "pendiente"
+  // hasta que el usuario confirme el envío con el botón/Enter.
+  const handlePickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = ""; // permite re-seleccionar el mismo archivo
+    if (!file || !selectedConv) return;
+
+    if (file.size > 4 * 1024 * 1024) {
+      toast("La imagen no puede pesar más de 4 MB.", "error");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast("Formato no soportado. Usa JPEG, PNG o WEBP.", "error");
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("conversationId", selectedConv.id);
+      const res = await fetch("/api/ava-command/upload", { method: "POST", body: form });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok || !payload?.imageUrl) {
+        throw new Error(payload?.detail || payload?.error || "upload_failed");
+      }
+      setPendingImage({ url: payload.imageUrl, name: file.name });
+      toast("Imagen lista. Se enviará al cliente vía Ava.", "success");
+    } catch {
+      toast("No se pudo subir la imagen.", "error");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !selectedConv) return;
+    if (!selectedConv) return;
+
+    const content = inputText.trim();
+    const hasImage = !!pendingImage;
+    const isAvaCmd = /^\/ava(\s|$)/i.test(content);
+
+    if (!content && !hasImage) return; // nada que enviar
 
     setSending(true);
-    const content = inputText.trim();
 
-    // ── Comando /ava ── orden interna para Ava; el cliente NUNCA la ve.
+    // ── Comando /ava o envío de imagen vía Ava ── orden interna; el cliente NUNCA la ve.
     // No pausa el bot: Ava genera y manda su respuesta al instante.
-    if (/^\/ava(\s|$)/i.test(content)) {
-      const instruction = content.replace(/^\/ava\s*/i, "").trim();
-      if (!instruction) {
+    if (hasImage || isAvaCmd) {
+      // La instrucción es el texto que el equipo escribió. En una foto adjunta puede ir
+      // vacía: Ava NO ve la imagen, así que sin texto manda un mensaje neutro sin inventar
+      // qué es. Con texto, ese texto es la base obligatoria del mensaje.
+      const instruction = isAvaCmd ? content.replace(/^\/ava\s*/i, "").trim() : content;
+      if (!instruction && !hasImage) {
         toast("Escribe una instrucción después de /ava, p. ej. /ava manda la foto del Nogal.", "error");
         setSending(false);
         return;
       }
+      const imageUrl = pendingImage?.url;
       setInputText("");
+      setPendingImage(null);
 
       // El bot sigue activo (a diferencia de un mensaje normal).
       const activeConv = { ...selectedConv, status: "active" };
       setSelectedConv(activeConv);
       setConversations((prev) => prev.map((c) => (c.id === activeConv.id ? activeConv : c)));
 
-      // Nota interna optimista (solo visible para el equipo).
+      // Nota interna optimista (debe coincidir con la que arma el backend).
+      const noteContent = imageUrl
+        ? (instruction ? `[AVA-CMD] 📷 ${instruction}` : `[AVA-CMD] 📷 Foto adjunta enviada al cliente`)
+        : `[AVA-CMD] ${instruction}`;
       const optimisticNote = {
         id: `temp-${Date.now()}`,
         conversation_id: selectedConv.id,
         sender: "bot",
-        content: `[AVA-CMD] ${instruction}`,
+        content: noteContent,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, optimisticNote]);
@@ -193,7 +245,7 @@ export default function InboxPage() {
         const res = await fetch("/api/ava-command", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ conversation_id: selectedConv.id, instruction }),
+          body: JSON.stringify({ conversation_id: selectedConv.id, instruction, image_url: imageUrl }),
         });
         if (!res.ok) {
           toast("Ava no pudo procesar la orden.", "error");
@@ -556,18 +608,53 @@ export default function InboxPage() {
 
             {/* Input bar */}
             <div className="crm-chat-input-bar">
+              {/* Preview de imagen adjunta (se enviará vía Ava). */}
+              {pendingImage && (
+                <div className="crm-ava-attachment">
+                  <img src={pendingImage.url} alt={pendingImage.name} className="crm-ava-attachment-thumb" />
+                  <span className="crm-ava-attachment-name">
+                    🔒 Se enviará vía Ava: {pendingImage.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingImage(null)}
+                    className="crm-ava-attachment-remove"
+                    title="Quitar imagen"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <form onSubmit={handleSendMessage} className="crm-chat-input-form">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePickImage}
+                  style={{ display: "none" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending || uploadingImage}
+                  className="crm-chat-attach-btn"
+                  title="Adjuntar foto para enviar vía Ava"
+                >
+                  {uploadingImage ? "…" : <Paperclip size={16} />}
+                </button>
                 <input
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Escribe un mensaje… o /ava para darle una orden privada a Ava"
+                  placeholder={pendingImage
+                    ? "Mensaje opcional para la foto… (Enviar para mandarla vía Ava)"
+                    : "Escribe un mensaje… o /ava para darle una orden privada a Ava"}
                   disabled={sending}
                   className="crm-chat-input-field"
                 />
                 <button
                   type="submit"
-                  disabled={!inputText.trim() || sending}
+                  disabled={(!inputText.trim() && !pendingImage) || sending}
                   className="crm-chat-send-btn"
                 >
                   {sending ? "..." : <Send size={15} />}

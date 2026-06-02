@@ -674,6 +674,85 @@ select {
   transform: none;
 }
 
+/* Botón adjuntar foto (envío vía Ava) */
+.crm-chat-attach-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.crm-chat-attach-btn:hover {
+  background: rgba(124, 58, 237, 0.10);
+  color: #7c3aed;
+}
+
+.crm-chat-attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Chip de imagen adjunta pendiente de enviar vía Ava */
+.crm-ava-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  background: rgba(245, 243, 255, 0.92);
+  border: 1px dashed #c4b5fd;
+  border-radius: var(--radius-md);
+}
+
+.crm-ava-attachment-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.crm-ava-attachment-name {
+  flex: 1;
+  font-size: 0.8rem;
+  color: #5b21b6;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-ava-attachment-remove {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: #7c3aed;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.crm-ava-attachment-remove:hover {
+  background: rgba(124, 58, 237, 0.12);
+}
+
 /* Empty state */
 .crm-empty-state {
   flex: 1;

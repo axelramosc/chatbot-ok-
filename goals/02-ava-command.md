@@ -41,8 +41,10 @@ normal, que lo pausa).
 - **Fase 1 — PoC texto + fotos de catálogo** ✅ implementada. Validar en vivo:
   - `/ava dile que el rústico es el Nogal`
   - `/ava manda la foto del Wall Cladding`
-- **Fase 2 — Imagen adjunta manual** (pendiente): endpoint de upload ad-hoc + botón 📎.
-  El endpoint `ava-command` ya acepta `image_url`; falta la UI y el upload.
+- **Fase 2 — Imagen adjunta manual** ✅ implementada:
+  - `app/api/ava-command/upload/route.ts`: sube a `product-images/ava-adhoc/...` (bucket público) y devuelve la URL.
+  - Dashboard: botón 📎 + preview de la imagen pendiente + envío con `image_url` vía `/api/ava-command`.
+  - El endpoint, al recibir `image_url`, hace que Ava escriba solo un texto breve y envía la imagen por separado (no toca `images_to_send`).
 
 ## Criterio de validación (Fase 1)
 

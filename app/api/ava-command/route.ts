@@ -56,7 +56,9 @@ export async function POST(request: Request) {
     const image_url: string | undefined =
       typeof body?.image_url === "string" && body.image_url.trim() ? body.image_url.trim() : undefined;
 
-    if (!conversation_id || !instruction) {
+    // Una orden /ava normal necesita instrucción; un envío de foto manual puede no
+    // llevar texto (Ava manda un mensaje neutro), pero sí necesita la imagen.
+    if (!conversation_id || (!instruction && !image_url)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -74,13 +76,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
 
+    // Texto de la nota interna (visible solo para el equipo). Debe coincidir con el
+    // que arma el frontend para que el realtime reemplace la nota optimista sin duplicar.
+    const noteContent = image_url
+      ? (instruction ? `[AVA-CMD] 📷 ${instruction}` : `[AVA-CMD] 📷 Foto adjunta enviada al cliente`)
+      : `[AVA-CMD] ${instruction}`;
+
     // 2. Guarda la orden como NOTA INTERNA. Nunca se envía a ningún canal.
     //    Se guarda primero para que quede registro aunque la IA falle después.
     try {
       await supabase.from("messages").insert({
         conversation_id,
         sender: "bot",
-        content: `[AVA-CMD] ${instruction}`,
+        content: noteContent,
         message_type: "internal_note",
         wa_message_id: `ava-cmd-${Date.now()}`,
       });
@@ -106,47 +114,66 @@ export async function POST(request: Request) {
       getKnowledgeFragments().catch((e) => { console.warn("Error fetching knowledge:", e); return []; }),
     ]);
 
-    // El turno final que ve el modelo DEBE ser la orden del equipo, no el último
-    // mensaje del cliente (que podría ser un simple "Hola" y haría que Ava solo salude
-    // ignorando la orden). Se marca explícitamente como interna para que no la trate
-    // como si la hubiera escrito el cliente ni la mencione en su respuesta.
-    const directiveTurn =
-      `⚙️ ORDEN INTERNA DEL EQUIPO (NO la escribió el cliente y el cliente NO la ve). ` +
-      `Ejecútala AHORA en tu respuesta al cliente, por encima de cualquier saludo o flujo: «${instruction}». ` +
-      `Si la orden implica mandar la foto de un producto, es OBLIGATORIO incluir su UUID en "images_to_send".`;
+    // 5. Construye el mensaje de Ava al cliente.
+    let aiMessage: string;
+    let catalogImageIds: string[] = [];
 
-    // 5. Genera la respuesta de Ava con la orden como directiva de máxima prioridad.
-    const aiResponse = await generateResponse(
-      directiveTurn,
-      products as never,
-      faqs as never,
-      recentMessages as never,
-      (conv.customer_name as string) || null,
-      businessSettings as Record<string, string>,
-      knowledgeFragments as never,
-      { conversationId: conversation_id, phoneNumber: conv.phone_number as string },
-      instruction,
-    );
+    if (image_url && !instruction) {
+      // Foto adjunta SIN indicación: Ava NO puede ver la imagen, así que NO involucramos
+      // al modelo (evita que invente qué es, p. ej. nombrar un producto del catálogo).
+      // Mensaje neutro y cálido, sin describir nada de la foto.
+      const nameSuffix = conv.customer_name ? `, ${conv.customer_name}` : "";
+      aiMessage = `¡Aquí te comparto esta foto${nameSuffix}! 📸 Cualquier duda, con gusto te ayudo 😊`;
+    } else {
+      // El turno final que ve el modelo DEBE ser la orden del equipo, no el último
+      // mensaje del cliente (que podría ser un simple "Hola" y haría que Ava solo salude).
+      // Se marca como interna para que no la trate como si la hubiera escrito el cliente.
+      const directiveTurn = image_url
+        ? `⚙️ ORDEN INTERNA DEL EQUIPO (NO la escribió el cliente y el cliente NO la ve). ` +
+          `Se adjuntó una foto que TÚ NO PUEDES VER y que se enviará junto a tu respuesta. ` +
+          `Escribe un mensaje breve y cálido basándote ÚNICAMENTE en esta indicación del equipo: «${instruction}». ` +
+          `PROHIBIDO describir, nombrar o inventar lo que aparece en la imagen (producto, color, acabado, medidas) más allá de lo que diga la indicación. ` +
+          `No incluyas nada en "images_to_send" — la foto ya va por separado.`
+        : `⚙️ ORDEN INTERNA DEL EQUIPO (NO la escribió el cliente y el cliente NO la ve). ` +
+          `Ejecútala AHORA en tu respuesta al cliente, por encima de cualquier saludo o flujo: «${instruction}». ` +
+          `Si la orden implica mandar la foto de un producto, es OBLIGATORIO incluir su UUID en "images_to_send".`;
+
+      const aiResponse = await generateResponse(
+        directiveTurn,
+        products as never,
+        faqs as never,
+        recentMessages as never,
+        (conv.customer_name as string) || null,
+        businessSettings as Record<string, string>,
+        knowledgeFragments as never,
+        { conversationId: conversation_id, phoneNumber: conv.phone_number as string },
+        // En fotos manuales NO inyectamos la directiva al system prompt: sus reglas de
+        // imágenes empujarían a usar un UUID de catálogo. El turno de arriba ya basta.
+        image_url ? undefined : instruction,
+      );
+      aiMessage = aiResponse.message;
+      catalogImageIds = aiResponse.images_to_send ?? [];
+    }
 
     // 6. Guarda la respuesta como mensaje normal de Ava (se mostrará como "Ava").
     try {
-      await saveMessage(conversation_id, "bot", aiResponse.message);
+      await saveMessage(conversation_id, "bot", aiMessage);
     } catch (e) {
       console.warn("⚠️ /ava: no se pudo guardar la respuesta de Ava:", e);
     }
 
     // 7. Envía el texto al cliente por el canal correcto.
-    const sent = await routeAdminReply(conversation_id, aiResponse.message);
+    const sent = await routeAdminReply(conversation_id, aiMessage);
     if (!sent) {
       console.error("❌ /ava: falló el envío del mensaje al cliente.");
     }
 
-    // 8. Imágenes de catálogo que la IA pidió (validadas contra el catálogo cargado).
-    try {
-      const ids = aiResponse.images_to_send ?? [];
-      if (ids.length > 0) {
+    // 8. Imágenes de CATÁLOGO que la IA pidió (solo en órdenes de texto; validadas
+    //    contra el catálogo cargado para no enviar IDs inventados).
+    if (!image_url && catalogImageIds.length > 0) {
+      try {
         const byId = new Map((products as { id: string; image_url?: string | null }[]).map((p) => [p.id, p]));
-        for (const id of ids.slice(0, 3)) {
+        for (const id of catalogImageIds.slice(0, 3)) {
           const prod = byId.get(id);
           if (!prod || !prod.image_url) {
             console.log(`📷 /ava: producto ${id} sin imagen o inexistente — se omite.`);
@@ -155,9 +182,9 @@ export async function POST(request: Request) {
           const ok = await routeAdminImage(conversation_id, prod.image_url);
           if (!ok) console.warn(`📷 /ava: falló envío de imagen del producto ${id}.`);
         }
+      } catch (e) {
+        console.warn("⚠️ /ava: error no crítico enviando imágenes de catálogo:", e);
       }
-    } catch (e) {
-      console.warn("⚠️ /ava: error no crítico enviando imágenes de catálogo:", e);
     }
 
     // 9. Imagen adjunta manual (Fase 2). Se envía tal cual al cliente.
@@ -166,7 +193,7 @@ export async function POST(request: Request) {
       if (!ok) console.warn("📷 /ava: falló envío de la imagen manual.");
     }
 
-    return NextResponse.json({ success: true, message: aiResponse.message });
+    return NextResponse.json({ success: true, message: aiMessage });
   } catch (error) {
     console.error("ava-command error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
