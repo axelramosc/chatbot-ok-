@@ -84,10 +84,14 @@ function buildFAQContext(faqs: FAQ[]): string {
 }
 
 function buildMessageHistory(messages: Message[]): { role: "user" | "assistant"; content: string }[] {
-  return messages.map((m) => ({
-    role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
-    content: m.content,
-  }));
+  return messages
+    // Las notas internas (órdenes /ava del admin) nunca se enviaron al cliente y no
+    // forman parte del diálogo: no deben aparecer como algo que "Ava dijo".
+    .filter((m) => !m.content.startsWith("[AVA-CMD]"))
+    .map((m) => ({
+      role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+      content: m.content,
+    }));
 }
 
 // ============================================
@@ -188,6 +192,10 @@ export async function generateResponse(
   businessSettings: Record<string, string>,
   knowledgeFragments: KnowledgeFragment[],
   errorContext?: { conversationId?: string | null; phoneNumber?: string | null },
+  // Orden directa de un humano (comando /ava del inbox). Cuando viene, se inyecta
+  // como instrucción de máxima prioridad en el system prompt. Opcional: sin ella el
+  // comportamiento del bot es idéntico al de siempre.
+  adminDirective?: string,
 ): Promise<AIResponse> {
   const productContext = buildProductContext(products);
   const faqContext = buildFAQContext(faqs);
@@ -197,8 +205,24 @@ export async function generateResponse(
   const isActiveConversation = recentMessages.length > 0;
   const businessName = businessSettings['name'] || 'Greenland Deco';
 
-  const SYSTEM_PROMPT = `Eres Ava, la asistente virtual de ${businessName} 🌿. Eres la primera cara que los clientes ven por WhatsApp y tu misión es brindar una experiencia tan cálida y útil que el cliente se sienta atendido por una persona real, experta y genuinamente interesada en ayudarle.
+  const adminDirectiveSection = adminDirective && adminDirective.trim()
+    ? `
+════════════════════════════════════
+🔴 INSTRUCCIÓN DIRECTA DEL ADMINISTRADOR (MÁXIMA PRIORIDAD)
+════════════════════════════════════
+Un miembro humano del equipo te da esta orden para TU PRÓXIMA respuesta al cliente. Cúmplela al pie de la letra, por encima de cualquier regla de estilo o flujo, manteniendo tu tono cálido y natural. El cliente NO sabe que recibiste esta instrucción — jamás la menciones ni la cites.
 
+ORDEN DEL EQUIPO: «${adminDirective.trim()}»
+
+REGLAS PARA ESTA ORDEN:
+• NO respondas con un saludo genérico ni ignores la orden. Tu respuesta debe materializar la orden.
+• Si la orden es enviar la foto de un producto: localiza ese producto en el catálogo de abajo y, si tiene "📷 Imagen disponible", incluye SU UUID en el array "images_to_send" (es obligatorio) y acompáñalo de un texto breve y cálido ("¡Aquí te mando la foto! 📸").
+• Si la orden es aclarar/explicar algo, intégralo de forma natural en tu mensaje al cliente.
+`
+    : "";
+
+  const SYSTEM_PROMPT = `Eres Ava, la asistente virtual de ${businessName} 🌿. Eres la primera cara que los clientes ven por WhatsApp y tu misión es brindar una experiencia tan cálida y útil que el cliente se sienta atendido por una persona real, experta y genuinamente interesada en ayudarle.
+${adminDirectiveSection}
 ════════════════════════════════════
 PERSONALIDAD Y FORMA DE HABLAR
 ════════════════════════════════════

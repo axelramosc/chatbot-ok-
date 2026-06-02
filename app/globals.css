@@ -573,6 +573,19 @@ select {
   border-bottom-left-radius: var(--radius-xs);
 }
 
+/* Nota interna: orden /ava para Ava. Visible solo para el equipo, nunca para el cliente. */
+.crm-msg-bubble.crm-msg-note {
+  align-self: center;
+  max-width: 88%;
+  background: rgba(245, 243, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px dashed #c4b5fd;
+  border-radius: var(--radius-md);
+  font-style: italic;
+  color: #5b21b6;
+}
+
 .crm-msg-sender {
   font-size: 0.68rem;
   font-weight: 700;

@@ -1,7 +1,7 @@
 import { getSupabase } from "./supabase";
-import { sendTextMessage } from "./whatsapp";
-import { sendMessengerMessage } from "./channels/messenger";
-import { sendInstagramMessage } from "./channels/instagram";
+import { sendTextMessage, sendImageMessage } from "./whatsapp";
+import { sendMessengerMessage, sendMessengerImage } from "./channels/messenger";
+import { sendInstagramMessage, sendInstagramImage } from "./channels/instagram";
 
 export async function routeAdminReply(conversationId: string, text: string): Promise<boolean> {
   const supabase = getSupabase();
@@ -34,4 +34,42 @@ export async function routeAdminReply(conversationId: string, text: string): Pro
 
   // Default: WhatsApp
   return sendTextMessage(recipientId, text);
+}
+
+// Envía una imagen al cliente por el canal correcto. Usado por el comando /ava
+// (fotos de catálogo o imagen adjunta manual). WhatsApp admite caption; Messenger
+// e Instagram no, así que el caption se ignora en esos canales.
+export async function routeAdminImage(
+  conversationId: string,
+  imageUrl: string,
+  caption?: string,
+): Promise<boolean> {
+  const supabase = getSupabase();
+
+  const { data: conv } = await supabase
+    .from("conversations")
+    .select("channel, phone_number")
+    .eq("id", conversationId)
+    .single();
+
+  if (!conv) {
+    console.error(`❌ routeAdminImage: conversation ${conversationId} not found`);
+    return false;
+  }
+
+  const channel = (conv.channel as string) || "whatsapp";
+  const recipientId = conv.phone_number as string;
+
+  if (channel === "messenger") {
+    const psid = recipientId.replace("fb_psid_", "");
+    return sendMessengerImage(psid, imageUrl);
+  }
+
+  if (channel === "instagram") {
+    const igsid = recipientId.replace("ig_igsid_", "");
+    return sendInstagramImage(igsid, imageUrl);
+  }
+
+  // Default: WhatsApp
+  return sendImageMessage(recipientId, imageUrl, caption);
 }

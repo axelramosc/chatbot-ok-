@@ -161,6 +161,53 @@ export default function InboxPage() {
 
     setSending(true);
     const content = inputText.trim();
+
+    // ── Comando /ava ── orden interna para Ava; el cliente NUNCA la ve.
+    // No pausa el bot: Ava genera y manda su respuesta al instante.
+    if (/^\/ava(\s|$)/i.test(content)) {
+      const instruction = content.replace(/^\/ava\s*/i, "").trim();
+      if (!instruction) {
+        toast("Escribe una instrucción después de /ava, p. ej. /ava manda la foto del Nogal.", "error");
+        setSending(false);
+        return;
+      }
+      setInputText("");
+
+      // El bot sigue activo (a diferencia de un mensaje normal).
+      const activeConv = { ...selectedConv, status: "active" };
+      setSelectedConv(activeConv);
+      setConversations((prev) => prev.map((c) => (c.id === activeConv.id ? activeConv : c)));
+
+      // Nota interna optimista (solo visible para el equipo).
+      const optimisticNote = {
+        id: `temp-${Date.now()}`,
+        conversation_id: selectedConv.id,
+        sender: "bot",
+        content: `[AVA-CMD] ${instruction}`,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, optimisticNote]);
+      setTimeout(scrollToBottom, 100);
+
+      try {
+        const res = await fetch("/api/ava-command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversation_id: selectedConv.id, instruction }),
+        });
+        if (!res.ok) {
+          toast("Ava no pudo procesar la orden.", "error");
+          setInputText(content);
+        }
+      } catch {
+        toast("Ava no pudo procesar la orden.", "error");
+        setInputText(content);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     setInputText("");
 
     const updatedConv = { ...selectedConv, status: "attended" };
@@ -470,19 +517,24 @@ export default function InboxPage() {
             {/* Messages */}
             <div className="crm-chat-messages">
               {messages.map((msg) => {
+                const isAvaCmd = msg.sender === "bot" && msg.content.startsWith("[AVA-CMD]");
                 const isAdmin = msg.sender === "bot" && msg.content.startsWith("[ADMIN]");
-                const isBot   = msg.sender === "bot" && !isAdmin;
+                const isBot   = msg.sender === "bot" && !isAdmin && !isAvaCmd;
                 const isUser  = msg.sender === "user";
-                const displayContent = isAdmin
+                const displayContent = isAvaCmd
+                  ? msg.content.replace("[AVA-CMD] ", "")
+                  : isAdmin
                   ? msg.content.replace("[ADMIN] ", "")
                   : msg.content;
                 const bubbleClass = isUser
                   ? "crm-msg-user"
+                  : isAvaCmd
+                  ? "crm-msg-note"
                   : isAdmin
                   ? "crm-msg-admin"
                   : "crm-msg-bot";
-                const senderLabel = isAdmin ? "Admin" : isBot ? "Ava" : "Cliente";
-                const senderColor = isAdmin ? "#c2410c" : isBot ? "#1565C0" : "#15803d";
+                const senderLabel = isAvaCmd ? "🔒 Orden a Ava" : isAdmin ? "Admin" : isBot ? "Ava" : "Cliente";
+                const senderColor = isAvaCmd ? "#7c3aed" : isAdmin ? "#c2410c" : isBot ? "#1565C0" : "#15803d";
 
                 return (
                   <div key={msg.id} className={`crm-msg-bubble ${bubbleClass}`}>
@@ -509,7 +561,7 @@ export default function InboxPage() {
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Escribe un mensaje..."
+                  placeholder="Escribe un mensaje… o /ava para darle una orden privada a Ava"
                   disabled={sending}
                   className="crm-chat-input-field"
                 />
