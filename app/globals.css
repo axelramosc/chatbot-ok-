@@ -56,12 +56,19 @@
   padding: 0;
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: var(--bg-color);
   color: var(--text-color);
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -147,7 +154,7 @@ select {
 .justify-between { justify-content: space-between; }
 .w-full { width: 100%; }
 .h-full { height: 100%; }
-.h-screen { height: 100vh; }
+.h-screen { height: 100vh; height: 100dvh; }
 .p-4 { padding: 1rem; }
 .m-4 { margin: 1rem; }
 .gap-2 { gap: 0.5rem; }
@@ -1052,6 +1059,9 @@ select {
   .crm-chat-header {
     padding: 0.75rem 1rem;
     min-height: 58px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
   }
 
   .crm-conv-item {
