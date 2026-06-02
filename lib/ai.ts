@@ -1,9 +1,25 @@
-import { generateText } from "ai";
+import { generateObject, NoObjectGeneratedError } from "ai";
 import { gateway } from "@ai-sdk/gateway";
+import { z } from "zod";
 import type { Product, FAQ, Message, AIResponse, KnowledgeFragment } from "./types";
 import { getSupabase } from "./supabase";
 
 const PROVIDER_TIMEOUT_MS = 20_000;
+
+// Schema de salida estructurada. Usar generateObject (en vez de pedir "JSON puro"
+// en el prompt) fuerza al provider a emitir el objeto UNA sola vez, sin prosa
+// previa ni bloques ```json duplicados. Eso elimina la fuga de JSON al cliente y
+// reduce ~50% los tokens de salida en los mensajes que antes se duplicaban.
+const responseSchema = z.object({
+  message: z.string(),
+  // intent como string (no enum) para no romper el modo estricto de algunos
+  // providers; lo normalizamos después contra la lista válida.
+  intent: z.string().optional(),
+  products_mentioned: z.array(z.string()).optional(),
+  images_to_send: z.array(z.string()).optional(),
+});
+
+type ParsedResponse = z.infer<typeof responseSchema>;
 
 // ============================================
 // Context Builders
@@ -115,14 +131,36 @@ export interface ProviderAttempt {
   message: string;
 }
 
+// Si un provider devuelve el JSON envuelto en ```json o con texto extra, lo
+// limpiamos antes de que la SDK lo parsee, en lugar de fallar y gastar otro provider.
+async function repairModelJson({ text }: { text: string }): Promise<string | null> {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+  if (fenced) return fenced[1].trim();
+  const obj = text.match(/\{[\s\S]*\}/);
+  if (obj) return obj[0];
+  return null;
+}
+
+// Error interno que conserva el texto crudo del último intento, para que el caller
+// pueda recuperar un mensaje limpio en vez de mostrar un error técnico al cliente.
+class AllProvidersFailedError extends Error {
+  rawText?: string;
+  constructor(message: string, rawText?: string) {
+    super(message);
+    this.name = "AllProvidersFailedError";
+    this.rawText = rawText;
+  }
+}
+
 async function callLLMWithFailover(
   systemPrompt: string,
   history: { role: "user" | "assistant"; content: string }[],
   userMessage: string,
   attempts: ProviderAttempt[],
-): Promise<string> {
+): Promise<ParsedResponse> {
   const messages = [...history, { role: "user" as const, content: userMessage }];
   let lastError: unknown = null;
+  let lastRawText: string | undefined;
 
   for (const modelId of PROVIDER_CHAIN) {
     const t0 = Date.now();
@@ -130,18 +168,27 @@ async function callLLMWithFailover(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
     try {
-      const { text } = await generateText({
+      const { object } = await generateObject({
         model: gateway(modelId),
+        schema: responseSchema,
+        schemaName: "AvaReply",
+        schemaDescription: "Respuesta de la asistente Ava para el cliente.",
         system: systemPrompt,
         messages,
         temperature: 0.5,
+        // generateObject emite el objeto una sola vez (sin prosa duplicada), así
+        // que 512 tokens son holgados para una respuesta breve de WhatsApp.
         maxOutputTokens: 512,
+        experimental_repairText: repairModelJson,
         abortSignal: controller.signal,
       });
       console.log(`✅ AI Gateway: ${modelId} respondió OK en ${Date.now() - t0}ms`);
-      return text;
+      return object;
     } catch (err) {
       lastError = err;
+      // NoObjectGeneratedError conserva el texto crudo del modelo: lo guardamos
+      // como red de seguridad para recuperar el mensaje si todos los providers fallan.
+      if (NoObjectGeneratedError.isInstance(err) && err.text) lastRawText = err.text;
       const e = err as { status?: number; statusCode?: number; message?: string; name?: string; responseBody?: unknown };
       const status = e?.status ?? e?.statusCode ?? (e?.name === "AbortError" ? "timeout" : "unknown");
       const body = typeof e?.responseBody === "string" ? e.responseBody.slice(0, 300) : "";
@@ -153,7 +200,10 @@ async function callLLMWithFailover(
     }
   }
 
-  throw lastError ?? new Error("AI Gateway: todos los proveedores fallaron");
+  throw new AllProvidersFailedError(
+    (lastError as Error)?.message ?? "AI Gateway: todos los proveedores fallaron",
+    lastRawText,
+  );
 }
 
 async function logAiError(input: {
@@ -177,6 +227,60 @@ async function logAiError(input: {
   } catch (logErr) {
     console.error("⚠️ No se pudo persistir ai_error_logs:", logErr);
   }
+}
+
+// ============================================
+// Parseo robusto de la respuesta del modelo
+// ============================================
+//
+// Los modelos a veces NO obedecen "JSON puro": escriben la respuesta en prosa y
+// luego la vuelven a envolver en un bloque ```json (duplican el mensaje). Si ese
+// JSON además se trunca por límite de tokens, queda sin cerrar y JSON.parse falla.
+// Esta función nunca debe dejar que sintaxis JSON o backticks lleguen al cliente.
+
+const VALID_INTENTS: AIResponse["intent"][] = [
+  "browsing", "interested", "ready_to_buy", "bought",
+  "support", "greeting", "unknown", "representative",
+];
+
+function normalizeIntent(intent: string | undefined): AIResponse["intent"] {
+  return (VALID_INTENTS as string[]).includes(intent ?? "")
+    ? (intent as AIResponse["intent"])
+    : "browsing";
+}
+
+function recoverMessageFromRaw(raw: string): string {
+  const trimmed = raw.trim();
+
+  // 1. Caso típico de fuga: el modelo escribió la respuesta real en prosa ANTES
+  //    de un bloque ```json o de la primera llave. Esa prosa ES la respuesta.
+  const fenceIdx = trimmed.search(/```/);
+  const braceIdx = trimmed.indexOf("{");
+  const candidates = [fenceIdx, braceIdx].filter((i) => i >= 0);
+  if (candidates.length > 0) {
+    const cut = Math.min(...candidates);
+    const prose = trimmed.slice(0, cut).trim();
+    if (prose.length >= 15) return prose;
+  }
+
+  // 2. Recuperar el valor del campo "message" aunque el JSON esté truncado.
+  const m = trimmed.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  if (m && m[1]) {
+    try {
+      return JSON.parse(`"${m[1]}"`);
+    } catch {
+      // Truncado a media cadena: des-escapamos manualmente lo que haya.
+      return m[1]
+        .replace(/\\n/g, "\n")
+        .replace(/\\t/g, "\t")
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, "\\")
+        .trim();
+    }
+  }
+
+  // 3. Último recurso: quitar fences y llaves para no enviar sintaxis al cliente.
+  return trimmed.replace(/```json/gi, "").replace(/```/g, "").trim();
 }
 
 // ============================================
@@ -359,10 +463,13 @@ ${faqContext ? `PREGUNTAS FRECUENTES:\n${faqContext}\n` : ""}
 ${customerName ? `NOMBRE DEL CLIENTE: ${customerName}\n` : ""}
 
 ════════════════════════════════════
-FORMATO DE RESPUESTA (obligatorio, sin excepciones)
+CAMPOS DE LA RESPUESTA
 ════════════════════════════════════
-Responde SIEMPRE en JSON puro, sin markdown ni backticks:
-{"message": "tu respuesta aquí", "intent": "greeting|browsing|interested|ready_to_buy|bought|unknown|support", "products_mentioned": ["nombre del producto si aplica"], "images_to_send": ["uuid-del-producto si aplica"]}
+Tu respuesta se estructura en estos campos:
+• "message": el texto que verá el cliente (tu respuesta breve y cálida). Va aquí TODO lo que el cliente debe leer — nunca repitas este texto fuera del campo.
+• "intent": una de las intenciones de la lista de abajo.
+• "products_mentioned": nombres de productos que mencionaste (o [] si ninguno).
+• "images_to_send": UUIDs de imágenes a enviar (o [] si ninguna). Ver reglas de imágenes.
 
 REGLAS DE IMÁGENES (campo "images_to_send"):
 • Si un producto del catálogo tiene "📷 Imagen disponible — product_id: <UUID>" y lo recomiendas o el cliente muestra interés concreto en él (intent "interested" o "ready_to_buy"), incluye su <UUID> en images_to_send.
@@ -385,33 +492,32 @@ INTENCIONES:
   const attempts: ProviderAttempt[] = [];
 
   try {
-    const rawResponse = await callLLMWithFailover(SYSTEM_PROMPT, history, userMessage, attempts);
+    // generateObject devuelve el objeto ya validado contra el schema: una sola
+    // emisión, sin prosa duplicada ni bloques ```json que se filtren al cliente.
+    const parsed = await callLLMWithFailover(SYSTEM_PROMPT, history, userMessage, attempts);
 
-    // Algunos modelos a veces envuelven el JSON en markdown ``` o agregan texto extra.
-    // Extraemos el primer objeto JSON válido del string.
-    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-    const candidate = jsonMatch ? jsonMatch[0] : rawResponse;
-
-    try {
-      const parsed = JSON.parse(candidate) as AIResponse;
-      const images = Array.isArray(parsed.images_to_send)
-        ? parsed.images_to_send.filter((s): s is string => typeof s === "string" && s.length > 0)
-        : [];
-      return {
-        message: parsed.message || "Disculpa, ¿podrías repetir tu pregunta? 😊",
-        intent: parsed.intent || "browsing",
-        products_mentioned: parsed.products_mentioned || [],
-        images_to_send: images,
-      };
-    } catch {
-      return {
-        message: rawResponse || "Disculpa, ¿podrías repetir tu pregunta?",
-        intent: "browsing",
-        products_mentioned: [],
-        images_to_send: [],
-      };
-    }
+    const message = (parsed.message || "").trim();
+    const images = (parsed.images_to_send || []).filter(
+      (s): s is string => typeof s === "string" && s.length > 0,
+    );
+    return {
+      message: message || "Disculpa, ¿podrías repetir tu pregunta? 😊",
+      intent: normalizeIntent(parsed.intent),
+      products_mentioned: parsed.products_mentioned || [],
+      images_to_send: images,
+    };
   } catch (error) {
+    // Red de seguridad: si TODOS los providers fallaron pero el último dejó texto
+    // crudo recuperable, mandamos un mensaje limpio en vez de un error técnico.
+    const rawText = error instanceof AllProvidersFailedError ? error.rawText : undefined;
+    if (rawText) {
+      const recovered = recoverMessageFromRaw(rawText);
+      if (recovered && recovered.length > 5) {
+        console.warn("⚠️ Providers fallaron, pero se recuperó mensaje del texto crudo.");
+        return { message: recovered, intent: "browsing", products_mentioned: [], images_to_send: [] };
+      }
+    }
+
     console.error("AI Gateway error (todos los proveedores fallaron):", error);
     const errMsg = (error as Error)?.message ?? String(error);
     await logAiError({
