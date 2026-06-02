@@ -538,7 +538,7 @@ export default function InboxPage() {
                     setMenuConvId((id) => (id === conv.id ? null : conv.id));
                   }}
                 >
-                  <MoreVertical size={18} />
+                  <MoreVertical size={16} />
                 </button>
                 {menuConvId === conv.id && (
                   <div className="crm-conv-menu" onClick={(e) => e.stopPropagation()}>

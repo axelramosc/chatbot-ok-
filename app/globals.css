@@ -412,26 +412,26 @@ select {
 .crm-conv-menu-wrap {
   position: relative;
   flex-shrink: 0;
-  align-self: flex-start;
+  align-self: center; /* costado derecho, centrado verticalmente en la fila */
 }
 
 .crm-conv-menu-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border: none;
-  background: transparent;
+  background: transparent; /* mismo fondo que la bandeja */
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: #9ca3af; /* tres puntos en gris, discretos */
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
 }
 
 .crm-conv-menu-btn:hover {
-  background: var(--primary-100);
-  color: var(--text-color);
+  background: var(--primary-50);
+  color: #6b7280;
 }
 
 .crm-conv-menu {
