@@ -31,17 +31,20 @@ const CHANNEL_MAP: Record<string, { label: string; color: string; bg: string }> 
 
 // Manual customer status set by staff. Persistent; the bot never overwrites it.
 const CUSTOMER_STATUS_OPTIONS: Array<{
-  value: "venta" | "avisar_restock" | "cotizacion" | "cerrado" | "distribuidor";
+  value: "venta" | "avisar_restock" | "cotizacion" | "cerrado" | "distribuidor" | "reabierto";
   label: string;
   bg: string;
   color: string;
   border: string;
+  // auto: status set automatically by the system, not manually selectable by staff.
+  auto?: boolean;
 }> = [
   { value: "venta",          label: "Venta",            bg: "#dcfce7", color: "#15803d", border: "#86efac" },
   { value: "avisar_restock", label: "Avisar restock",   bg: "#fef3c7", color: "#a16207", border: "#fde68a" },
   { value: "cotizacion",     label: "Cotización",       bg: "#dbeafe", color: "#1d4ed8", border: "#bfdbfe" },
   { value: "cerrado",        label: "Cerrado",          bg: "#e4e4e7", color: "#3f3f46", border: "#d4d4d8" },
   { value: "distribuidor",   label: "Distribuidor",     bg: "#ede9fe", color: "#6d28d9", border: "#ddd6fe" },
+  { value: "reabierto",      label: "Reabierto",        bg: "#ffedd5", color: "#c2410c", border: "#fed7aa", auto: true },
 ];
 
 const customerStatusMeta = (value: string | null | undefined) =>
@@ -198,7 +201,7 @@ export default function InboxPage() {
   };
 
   const handleChangeCustomerStatus = async (
-    value: "venta" | "avisar_restock" | "cotizacion" | "cerrado" | "distribuidor" | "",
+    value: "venta" | "avisar_restock" | "cotizacion" | "cerrado" | "distribuidor" | "reabierto" | "",
   ) => {
     if (!selectedConv) return;
     const nextValue = value === "" ? null : value;
@@ -445,9 +448,14 @@ export default function InboxPage() {
                       }}
                     >
                       <option value="">Sin estatus</option>
-                      {CUSTOMER_STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
+                      {CUSTOMER_STATUS_OPTIONS
+                        // Auto statuses (e.g. "Reabierto") are set by the system, not
+                        // chosen by staff. Only show one if it's the current value so the
+                        // dropdown renders its label correctly and staff can switch away.
+                        .filter((opt) => !opt.auto || opt.value === selectedConv.customer_status)
+                        .map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                     </select>
                   );
                 })()}
