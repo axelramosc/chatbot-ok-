@@ -431,7 +431,25 @@ select {
 
 .crm-conv-menu-btn:hover {
   background: var(--primary-50);
-  color: #6b7280;
+}
+
+/* Tres puntos horizontales dibujados con CSS (independiente del set de íconos) */
+.crm-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.crm-dots span {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.crm-conv-menu-btn:hover .crm-dots span {
+  background: #6b7280;
 }
 
 .crm-conv-menu {

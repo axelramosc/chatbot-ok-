@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "../../lib/supabase-client";
-import { ChevronLeft, Send, MessageSquare, Paperclip, X, MoreVertical, Eraser, Trash2 } from "lucide-react";
+import { ChevronLeft, Send, MessageSquare, Paperclip, X, Eraser, Trash2 } from "lucide-react";
 import { useToast } from "../components/toast";
 
 const getInitials = (name: string, phone: string) => {
@@ -538,7 +538,11 @@ export default function InboxPage() {
                     setMenuConvId((id) => (id === conv.id ? null : conv.id));
                   }}
                 >
-                  <MoreVertical size={16} />
+                  <span className="crm-dots" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </span>
                 </button>
                 {menuConvId === conv.id && (
                   <div className="crm-conv-menu" onClick={(e) => e.stopPropagation()}>
