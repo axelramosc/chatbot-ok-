@@ -83,7 +83,8 @@ export async function POST(request: Request) {
   const originalName = sanitizeFilename(file.name || "image");
   const ext = extensionFor(mime, originalName.includes(".") ? "." + originalName.split(".").pop() : "");
   const base = originalName.replace(/\.[^.]+$/, "");
-  const convScope = typeof conversationId === "string" && conversationId.trim() ? conversationId.trim() : "general";
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const convScope = typeof conversationId === "string" && UUID_RE.test(conversationId) ? conversationId : "general";
   const path = `${PREFIX}/${convScope}/${Date.now()}-${base}${ext}`;
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
 
   if (uploadError) {
     console.error("ava-command/upload storage error:", uploadError);
-    return NextResponse.json({ error: "upload_failed", detail: uploadError.message }, { status: 500 });
+    return NextResponse.json({ error: "upload_failed" }, { status: 500 });
   }
 
   const { data: publicUrlData } = supabase.storage.from(BUCKET).getPublicUrl(path);

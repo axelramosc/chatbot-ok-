@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     .from("conversations")
     .select("id, phone_number, customer_name, context, updated_at")
     .eq("status", "sale_pending")
+    .eq("channel", "whatsapp")
     .lte("updated_at", THREE_HOURS_AGO)
     .gte("created_at", ONE_DAY_AGO);
 

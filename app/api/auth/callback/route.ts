@@ -13,10 +13,14 @@ export async function GET(request: Request) {
       : "/dashboard";
 
   if (code) {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!anonKey) {
+      return NextResponse.redirect(`${origin}/login?error=server_misconfigured`);
+    }
     const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      anonKey,
       {
         cookies: {
           get(name: string) {
@@ -38,6 +42,5 @@ export async function GET(request: Request) {
     }
   }
 
-  // return the user to an error page with instructions
   return NextResponse.redirect(`${origin}/login?error=auth_failed`);
 }

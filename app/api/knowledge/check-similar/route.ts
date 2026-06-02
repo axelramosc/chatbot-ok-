@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { getSupabase } from "../../../../lib/supabase";
 import { generateEmbedding } from "../../../../lib/embeddings";
 
@@ -12,7 +14,28 @@ type Body = {
   limit?: number;
 };
 
+async function getAuthUser() {
+  const cookieStore = await cookies();
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return cookieStore.get(name)?.value; },
+        set(_n: string, _v: string, _o: CookieOptions) {},
+        remove(_n: string, _o: CookieOptions) {},
+      },
+    }
+  );
+  const { data: { user } } = await sessionClient.auth.getUser();
+  return user;
+}
+
 export async function POST(req: Request) {
+  if (!await getAuthUser()) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: Body;
   try {
     body = await req.json();
@@ -40,7 +63,7 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("search_similar_knowledge error:", error);
-      return NextResponse.json({ error: "rpc_failed", detail: error.message }, { status: 500 });
+      return NextResponse.json({ error: "rpc_failed" }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -50,6 +73,6 @@ export async function POST(req: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("check-similar failed:", message);
-    return NextResponse.json({ error: "embedding_failed", detail: message }, { status: 500 });
+    return NextResponse.json({ error: "embedding_failed" }, { status: 500 });
   }
 }

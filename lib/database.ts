@@ -161,11 +161,12 @@ export async function getActiveProducts(): Promise<Product[]> {
 
 export async function searchProducts(query: string): Promise<Product[]> {
   const supabase = getSupabase();
+  const safeQuery = query.replace(/[%_,()*]/g, "\\$&");
   const { data, error } = await supabase
     .from("products")
     .select("*")
     .eq("is_active", true)
-    .or(`name.ilike.%${query}%,description.ilike.%${query}%,category.ilike.%${query}%`);
+    .or(`name.ilike.%${safeQuery}%,description.ilike.%${safeQuery}%,category.ilike.%${safeQuery}%`);
 
   if (error) throw new Error(`Failed to search products: ${error.message}`);
   return data as Product[];

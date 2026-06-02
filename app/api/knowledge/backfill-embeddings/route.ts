@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { getSupabase } from "../../../../lib/supabase";
 import { generateEmbedding } from "../../../../lib/embeddings";
 
@@ -6,10 +8,29 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// One-off endpoint to compute embeddings for existing knowledge_fragments and faqs.
 // Idempotent: only processes rows where embedding IS NULL.
-// Trigger manually with: curl -X POST <host>/api/knowledge/backfill-embeddings
+async function getAuthUser() {
+  const cookieStore = await cookies();
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return cookieStore.get(name)?.value; },
+        set(_n: string, _v: string, _o: CookieOptions) {},
+        remove(_n: string, _o: CookieOptions) {},
+      },
+    }
+  );
+  const { data: { user } } = await sessionClient.auth.getUser();
+  return user;
+}
+
 export async function POST() {
+  if (!await getAuthUser()) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = getSupabase();
   const stats = { fragments: 0, faqs: 0, errors: [] as string[] };
 
@@ -18,7 +39,7 @@ export async function POST() {
     .from("knowledge_fragments")
     .select("id, content")
     .is("embedding", null);
-  if (fragErr) return NextResponse.json({ error: fragErr.message }, { status: 500 });
+  if (fragErr) return NextResponse.json({ error: "fetch_failed" }, { status: 500 });
 
   for (const row of frags ?? []) {
     try {
@@ -36,12 +57,12 @@ export async function POST() {
     }
   }
 
-  // FAQs (embed question + answer concatenated, since both define the topic semantically)
+  // FAQs (embed question + answer concatenated)
   const { data: faqs, error: faqErr } = await supabase
     .from("faqs")
     .select("id, question, answer")
     .is("embedding", null);
-  if (faqErr) return NextResponse.json({ error: faqErr.message, stats }, { status: 500 });
+  if (faqErr) return NextResponse.json({ error: "fetch_failed", stats }, { status: 500 });
 
   for (const row of faqs ?? []) {
     try {

@@ -3,7 +3,10 @@ import { verifyWebhookSignature } from "../../../lib/whatsapp";
 import { handleIncomingMessage } from "../../../lib/message-handler";
 import type { WhatsAppWebhookPayload } from "../../../lib/types";
 
-const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || "default_verify_token";
+const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+if (!VERIFY_TOKEN) {
+  console.error("❌ WHATSAPP_VERIFY_TOKEN is not set");
+}
 
 // Allow up to 60 seconds for Groq AI + WhatsApp API calls
 export const maxDuration = 60;
@@ -18,6 +21,11 @@ export async function GET(request: NextRequest) {
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
+
+  if (!VERIFY_TOKEN) {
+    console.error("❌ WHATSAPP_VERIFY_TOKEN is not set — rejecting verification");
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
+  }
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
     console.log("✅ Webhook verified successfully");

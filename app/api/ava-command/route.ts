@@ -52,9 +52,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const conversation_id: string | undefined = body?.conversation_id;
-    const instruction: string = (body?.instruction ?? "").toString().trim();
+    const instruction: string = (body?.instruction ?? "").toString().trim().slice(0, 500);
+    const rawImageUrl = typeof body?.image_url === "string" ? body.image_url.trim() : "";
+    const supabaseStoragePrefix = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/`;
     const image_url: string | undefined =
-      typeof body?.image_url === "string" && body.image_url.trim() ? body.image_url.trim() : undefined;
+      rawImageUrl && rawImageUrl.startsWith(supabaseStoragePrefix) ? rawImageUrl : undefined;
+    if (rawImageUrl && !image_url) {
+      return NextResponse.json({ error: "invalid_image_url" }, { status: 400 });
+    }
 
     // Una orden /ava normal necesita instrucción; un envío de foto manual puede no
     // llevar texto (Ava manda un mensaje neutro), pero sí necesita la imagen.

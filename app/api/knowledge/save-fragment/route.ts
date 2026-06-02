@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { getSupabase } from "../../../../lib/supabase";
 import { generateEmbedding } from "../../../../lib/embeddings";
 
@@ -19,7 +21,28 @@ type Body = {
   supersedesId?: string | null;
 };
 
+async function getAuthUser() {
+  const cookieStore = await cookies();
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) { return cookieStore.get(name)?.value; },
+        set(_n: string, _v: string, _o: CookieOptions) {},
+        remove(_n: string, _o: CookieOptions) {},
+      },
+    }
+  );
+  const { data: { user } } = await sessionClient.auth.getUser();
+  return user;
+}
+
 export async function POST(req: Request) {
+  if (!await getAuthUser()) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: Body;
   try {
     body = await req.json();
@@ -50,13 +73,13 @@ export async function POST(req: Request) {
         const { error } = await supabase.from(table).update({ is_active: false }).eq("id", d.id);
         if (error) {
           console.error(`deactivate ${table} ${d.id} failed:`, error);
-          return NextResponse.json({ error: "decision_failed", detail: error.message }, { status: 500 });
+          return NextResponse.json({ error: "decision_failed" }, { status: 500 });
         }
       } else if (d.action === "delete") {
         const { error } = await supabase.from(table).delete().eq("id", d.id);
         if (error) {
           console.error(`delete ${table} ${d.id} failed:`, error);
-          return NextResponse.json({ error: "decision_failed", detail: error.message }, { status: 500 });
+          return NextResponse.json({ error: "decision_failed" }, { status: 500 });
         }
       }
     }
@@ -87,13 +110,13 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("insert knowledge_fragment failed:", error);
-      return NextResponse.json({ error: "insert_failed", detail: error.message }, { status: 500 });
+      return NextResponse.json({ error: "insert_failed" }, { status: 500 });
     }
 
     return NextResponse.json({ fragment: data });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("save-fragment failed:", message);
-    return NextResponse.json({ error: "save_failed", detail: message }, { status: 500 });
+    return NextResponse.json({ error: "save_failed" }, { status: 500 });
   }
 }
