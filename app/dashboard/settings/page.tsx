@@ -19,7 +19,7 @@ const SETTING_LABELS: Record<string, { label: string; hint?: string; multiline?:
   instagram:            { label: "Instagram" },
   facebook:             { label: "Facebook" },
   extra_info:           { label: "Información Adicional", multiline: true },
-  sales_agent_numbers:  { label: "Teléfonos de Asesores", hint: "Separados por coma. Ej: 528441757500, 528441757501", multiline: true },
+  sales_agent_numbers:  { label: "Teléfonos de Asesores (avisos de representante)", hint: "WhatsApp que reciben el aviso cuando un cliente pide un representante. Separa varios con coma; la lada 52 se agrega sola. Ej: 8441757500, 8442739524", multiline: true },
 };
 
 function getLabel(key: string) {
@@ -28,6 +28,23 @@ function getLabel(key: string) {
 
 function isMultiline(key: string, value: string) {
   return SETTING_LABELS[key]?.multiline || value.length > 60;
+}
+
+// Normaliza los teléfonos de asesores a E.164 de México (52 + 10 dígitos), sin
+// importar cómo se escriban, para que WhatsApp Cloud API los acepte al enviar.
+function normalizeAgentNumbers(raw: string): string {
+  return raw
+    .split(",")
+    .map((n) => n.replace(/\D/g, ""))
+    .filter((n) => n.length > 0)
+    .map((n) =>
+      n.startsWith("521") && n.length === 13
+        ? "52" + n.slice(3)
+        : n.length === 10
+          ? "52" + n
+          : n
+    )
+    .join(", ");
 }
 
 export default function SettingsPage() {
@@ -65,7 +82,7 @@ export default function SettingsPage() {
     setSavingBusiness(true);
     const updates = Object.entries(businessSettings).map(([key, value]) => ({
       key,
-      value,
+      value: key === "sales_agent_numbers" ? normalizeAgentNumbers(value) : value,
       updated_at: new Date().toISOString(),
     }));
 

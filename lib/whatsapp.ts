@@ -13,16 +13,21 @@ const GRAPH_API_URL = "https://graph.facebook.com/v25.0";
 
 /**
  * Normalize Mexican phone numbers for WhatsApp Cloud API.
- * Incoming webhook messages use format: 5218xxxxxxxxx (10-digit with extra 1)
- * But the API / test recipient list expects: 52xxxxxxxxxx
- * Strip the '1' after country code 52 if the total length is 13 digits.
+ * The API expects digits only, E.164 without '+': 52xxxxxxxxxx (52 + 10 digits).
+ * Handles human-typed values from the CRM (spaces, dashes, parens, leading '+')
+ * and the incoming webhook format 521xxxxxxxxxx (13 digits with the extra '1').
  */
 function normalizeMexicanNumber(phone: string): string {
-  // 521 + 10 digits = 13 chars → strip the 1 → 52 + 10 digits = 12 chars
-  if (phone.startsWith("521") && phone.length === 13) {
-    return "52" + phone.slice(3);
+  // Keep digits only → strips spaces, dashes, parentheses, leading '+', etc.
+  let digits = phone.replace(/\D/g, "");
+  // Incoming WhatsApp format: 521 + 10 digits (13) → 52 + 10 digits
+  if (digits.startsWith("521") && digits.length === 13) {
+    digits = "52" + digits.slice(3);
+  } else if (digits.length === 10) {
+    // Local 10-digit MX number without country code → prepend lada 52
+    digits = "52" + digits;
   }
-  return phone;
+  return digits;
 }
 
 // ============================================
