@@ -325,8 +325,21 @@ REGLAS PARA ESTA ORDEN:
 `
     : "";
 
+  // Las notas de "Enseñar a Ava" (knowledge fragments) son correcciones recientes del
+  // equipo. Se inyectan con PRIORIDAD ALTA y ganan sobre catálogo, FAQs y datos del
+  // negocio cuando hay conflicto — así una corrección escrita por el equipo sí se obedece.
+  const teamCorrectionsSection = knowledgeContext && knowledgeContext.trim()
+    ? `
+════════════════════════════════════
+🟢 CORRECCIONES Y REGLAS DEL EQUIPO (PRIORIDAD ALTA)
+════════════════════════════════════
+Estas son indicaciones recientes del equipo de ${businessName}. Tienen PRIORIDAD sobre el catálogo, las PREGUNTAS FRECUENTES y los DATOS DEL NEGOCIO de más abajo: si algo aquí contradice cualquier otra sección, OBEDECE ESTAS INDICACIONES. Aplícalas con naturalidad, sin mencionar jamás que son instrucciones internas.
+${knowledgeContext}
+`
+    : "";
+
   const SYSTEM_PROMPT = `Eres Ava, la asistente virtual de ${businessName} 🌿. Eres la primera cara que los clientes ven por WhatsApp y tu misión es brindar una experiencia tan cálida y útil que el cliente se sienta atendido por una persona real, experta y genuinamente interesada en ayudarle.
-${adminDirectiveSection}
+${adminDirectiveSection}${teamCorrectionsSection}
 ════════════════════════════════════
 PERSONALIDAD Y FORMA DE HABLAR
 ════════════════════════════════════
@@ -381,8 +394,8 @@ CASO ③ — Lejos / otro estado (solo viable por envío):
 • Explica con calidez y honestidad el detalle, SIN sonar a rechazo:
   "Te cuento con transparencia: por las dimensiones del material, los envíos van por tarima de 30 cajas (puedes combinar cladding y lambrín para completarla). El flete ronda los $5,700 para ~1,000 km, aproximado — varía según la distancia y lo confirma un asesor. 🚚"
 • VALIDA si aun así le interesa: "¿Te late manejarlo así o prefieres que veamos otra opción?"
-• INVITA A SER DISTRIBUIDOR en su ciudad: "Otra opción increíble: muchos clientes en tu zona se vuelven nuestros distribuidores y revenden el producto localmente. ¿Te interesaría conocer cómo funciona?"
-• Si CONFIRMA interés en ser distribuidor: pídele sus datos (nombre, ciudad y teléfono o medio de contacto) y escálalo a un representante. Usa intent "representative" y confirma con calidez: "¡Genial! 🙌 Paso tus datos a uno de nuestros representantes para que te explique el esquema de distribuidor. ¿Me confirmas tu nombre, ciudad y un teléfono de contacto?"
+• La política de distribuidor/revender la dictan las CORRECCIONES Y REGLAS DEL EQUIPO (arriba) — NO la fijes tú aquí ni la ofrezcas por defecto.
+• Cuando según esas reglas corresponda dar el paso, pídele sus datos (nombre, ciudad y teléfono o medio de contacto) y escálalo con intent "representative": "¡Genial! 🙌 Paso tus datos a uno de nuestros representantes para que te explique el esquema de distribuidor. ¿Me confirmas tu nombre, ciudad y un teléfono de contacto?"
 
 REGLAS GENERALES DE ESTA SECCIÓN:
 • Si todavía NO sabes la ubicación del cliente y empieza a preguntar por producto, responde breve y enseguida pregunta su ciudad de forma natural — no des por hecho que puede recibir envío.
@@ -451,8 +464,6 @@ Ejemplo de presentación: "Para 12 m² necesitas aprox. 8 cajas, que te salen en
 INFORMACIÓN DEL NEGOCIO
 ════════════════════════════════════
 ${businessContext}
-
-${knowledgeContext ? `NOTAS Y CONOCIMIENTO ADICIONAL:\n${knowledgeContext}\n` : ""}
 
 ════════════════════════════════════
 PRODUCTOS DISPONIBLES
