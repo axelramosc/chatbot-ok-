@@ -126,6 +126,11 @@ export default function InboxPage() {
             return [...prev, payload.new];
           });
           setTimeout(scrollToBottom, 100);
+          // La conversación está abierta: si entra un mensaje del cliente,
+          // se considera leído al instante (no se acumula badge).
+          if (payload.new.sender === "user") {
+            markConversationRead(selectedConv.id);
+          }
         }
       )
       .subscribe();
@@ -153,9 +158,24 @@ export default function InboxPage() {
     }
   };
 
+  // Resetea el contador de no leídos de una conversación (contador global,
+  // compartido por el equipo). Optimista en la lista para respuesta inmediata;
+  // el .neq evita un write innecesario si ya estaba en 0.
+  const markConversationRead = async (convId: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === convId ? { ...c, unread_count: 0 } : c))
+    );
+    await supabase
+      .from("conversations")
+      .update({ unread_count: 0 })
+      .eq("id", convId)
+      .neq("unread_count", 0);
+  };
+
   const handleSelectConv = (conv: any) => {
     setSelectedConv(conv);
     setShowChat(true);
+    if (conv.unread_count > 0) markConversationRead(conv.id);
   };
 
   const scrollToBottom = () =>
@@ -493,7 +513,16 @@ export default function InboxPage() {
                 {conv.customer_name && (
                   <div className="crm-conv-phone">{conv.phone_number}</div>
                 )}
-                <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", alignItems: "center" }}>
+                  {conv.unread_count > 0 && (
+                    <span
+                      className="crm-conv-unread"
+                      title={`${conv.unread_count} mensaje(s) sin leer`}
+                      aria-label={`${conv.unread_count} mensajes sin leer`}
+                    >
+                      {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                    </span>
+                  )}
                   <span
                     className="crm-conv-badge"
                     style={{ background: st.bg, color: st.color }}

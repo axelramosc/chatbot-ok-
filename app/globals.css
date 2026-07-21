@@ -408,6 +408,23 @@ select {
   letter-spacing: 0.02em;
 }
 
+/* Globo de mensajes sin leer (estilo WhatsApp, verde de marca) */
+.crm-conv-unread {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 /* Conversation 3-dot menu */
 .crm-conv-menu-wrap {
   position: relative;
