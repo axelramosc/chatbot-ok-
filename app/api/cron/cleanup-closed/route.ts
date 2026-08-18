@@ -3,22 +3,38 @@ import { getSupabase } from "../../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-// Cron: physically removes conversations the sales team closed
-// (customer_status = 'cerrado') that have stayed closed and idle for more than
-// RETENTION_DAYS. The clock is `closed_at` (set when the conversation became
-// 'cerrado'); reopening a conversation resets it to NULL — via the auto
-// 'reabierto' status or any manual change — so the 60-day timer restarts and
-// only re-closing it starts a fresh countdown.
+// ⚠️ DESACTIVADO. Ya no está agendado en vercel.json y además exige el flag
+// CLEANUP_CLOSED_ENABLED="true" para ejecutar el borrado.
 //
-// Deleting a conversation cascades to its messages and its sales_lead
-// (FK ON DELETE CASCADE) and nulls any ai_error_logs reference, so the
-// database is left clean with no orphaned rows.
+// Motivo: las conversaciones finalizadas (customer_status = 'cerrado') son el
+// indicador principal del bot — atender al cliente y dejar la conversación
+// cerrada. Borrarlas a los 60 días destruía justo la evidencia que mide ese
+// objetivo: el histórico se perdía y el contador se quedaba plano. La BD pesa
+// ~25 MB y crece ~3.5 MB/mes contra 500 MB de cupo, así que conservar todo no
+// representa un problema de espacio en el horizonte previsible.
+//
+// Para reactivarlo: volver a agregar la entrada en vercel.json y definir
+// CLEANUP_CLOSED_ENABLED="true". Antes de hacerlo, asegurar que el histórico de
+// finalizaciones se preserve por otra vía, o las analíticas volverán a mentir.
+//
+// Qué hacía: eliminaba las conversaciones 'cerrado' con más de RETENTION_DAYS
+// desde `closed_at`. Borrar una conversación arrastra en cascada sus mensajes y
+// su sales_lead (FK ON DELETE CASCADE).
 const RETENTION_DAYS = 60;
+const CLEANUP_ENABLED = process.env.CLEANUP_CLOSED_ENABLED === "true";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  if (!CLEANUP_ENABLED) {
+    console.log("cleanup-closed: desactivado (CLEANUP_CLOSED_ENABLED != 'true'). Sin cambios.");
+    return NextResponse.json({
+      message: "Cleanup disabled — closed conversations are retained indefinitely.",
+      deleted: 0,
+    });
   }
 
   const supabase = getSupabase();

@@ -1,0 +1,70 @@
+-- ROLLBACK del cierre masivo del 2026-08-18
+-- Revierte a 'sin etiquetar' las 58 conversaciones anteriores al 15-ago-2026
+-- que se marcaron como 'cerrado'. El trigger trg_sync_closed_at devuelve
+-- closed_at a NULL automaticamente al salir de 'cerrado'.
+--
+-- Solo revierte las que sigan en 'cerrado': si alguien ya les puso otra
+-- etiqueta despues, se respeta y no se pisa.
+
+UPDATE conversations SET customer_status = NULL
+WHERE customer_status = 'cerrado'
+  AND id IN (
+    'e3f8a1d1-bcd9-45e0-9690-ce7faf1dcd47',
+    'b3531283-b7c7-4eee-8662-b9975a8afcfe',
+    'e6f2160e-22eb-4f16-b4fe-e17766704090',
+    'e5e4e913-bd37-49e8-96ed-7237dfb2cb57',
+    '71af2df9-abe5-475b-8b41-802a97f0126d',
+    '5334b16c-408a-4471-bdaa-5418dbd51313',
+    '9e295df3-7570-4fac-a499-73a02f4978db',
+    '26b180a0-9716-4c63-8032-78b9afb88915',
+    '93746097-fe87-4ebb-889e-a337bd9fac85',
+    '44f597cb-4c76-4bec-82c2-e9458cca1359',
+    'c5497951-7ff7-46b3-b7c6-97ad25947bd6',
+    '5eb45ee2-2740-4dd3-94d1-9f8397c6d491',
+    'eae4a3c6-5397-48c4-bae0-24656d6a9543',
+    '0a2aeb73-7302-40ae-ac35-696fc6183a4c',
+    'b25e092d-01ed-419c-b827-5e33b4679f9f',
+    '4f1ef00e-398f-481f-9761-458252014d0a',
+    'b6958f38-1bc8-4b45-9511-2eff40d15ea2',
+    '8d82914d-afee-431b-8bca-cfa139116349',
+    '2f0e486b-cbd9-499f-a3f6-40d69b07bd27',
+    '52b6f615-774e-4e22-9b99-0da4a930ebab',
+    '397108f2-0654-4069-9766-e5c7562e8d01',
+    '27b9a6c9-64dd-4795-9998-5ae6615c1ae2',
+    'd47fa6bc-af74-4c19-ae52-ec8aca0a62df',
+    'b6a29807-70f0-43f2-a0ba-fce5b63d31cb',
+    '6cfd3c20-12eb-436c-98f1-d54ccf53e3af',
+    '1913ff9f-0130-4134-8bd1-6b69e91a1262',
+    'c4d5a49b-5df4-46e7-b820-c2db2a4e0f8a',
+    '304eff33-9df3-47b6-b575-25ed47e1c3df',
+    'b4b5f485-49d7-4859-91ac-1c33d492bc1a',
+    '10d59212-97de-4264-9697-fca175d956c5',
+    '498b2b00-4282-483f-9006-25c352fc0257',
+    '1a14b7df-ab58-4235-ab3e-330c1f4e88c5',
+    '5613286f-9173-4fda-9738-64d540aa3479',
+    '1fdfa393-daee-4fb9-980e-f3293b2369df',
+    '7ff7aa45-3472-4ebc-a28b-6250980b23b1',
+    'c39763d1-c576-43e0-82a9-fb5c183326e4',
+    '2a4b57d2-11fe-4c90-aaa1-85b2f62bfa7b',
+    '23d7aadd-0d85-4be1-9459-377d4da1ca33',
+    '9c243f7f-12b3-4c28-8811-2c75fd037477',
+    '27345ffc-f710-41cd-a459-aa71962a4813',
+    '3e443ed4-47cf-48c5-ba17-9938a03ff4bc',
+    '1e00c588-e093-472a-a7ab-e5131183d15a',
+    'f2ef36c4-26fc-48c8-905e-c849af6ac7d9',
+    '8a9c799f-ea37-42cd-98d6-9f77412727af',
+    '4e5fcdc6-60ba-4404-8dbf-ba3cbf0f5453',
+    '44bd2f5b-a47b-4b88-9e8d-625dea5d8c5d',
+    '012cd179-34b1-45f9-bfda-0ba2aef4cc0b',
+    'e0b8ab04-dfad-4d8d-a4da-1b4fff4a459a',
+    '6142fb90-f46c-4a95-9a91-71f9df788f7d',
+    'f1cd10b9-6098-4035-bf6d-19ed3e71e119',
+    'f5441d68-a90f-4fb0-9773-8d892deffdfa',
+    'a411774e-c68b-499a-a513-882236052a5e',
+    'd02ad9d4-8c17-4bed-9d57-84597efa1ffb',
+    'eaa713f9-47dc-42d0-90e1-3cb4acd60660',
+    '2c6aa913-231b-4741-9060-57e40127df3b',
+    'f0d4e5a5-d47d-4127-909f-b3c6eeea77b5',
+    '8a5eb8bf-fd7d-4184-920e-0dab22570ed7',
+    '9f3dd04c-c555-4e84-901b-15b6a2c5f1d6'
+  );
