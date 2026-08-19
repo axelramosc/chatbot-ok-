@@ -47,3 +47,6 @@ next-env.d.ts
 
 # capturas de automatización (playwright y similares)
 scripts/*.png
+
+# bitácora local de pendientes (no se versiona: es de trabajo, cambia a diario)
+PENDIENTES.md
