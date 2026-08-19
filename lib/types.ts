@@ -150,6 +150,9 @@ export interface AIResponse {
   // IDs de productos cuya imagen debe enviarse como attachment separado.
   // El servidor valida que cada ID exista y tenga image_url antes de enviar.
   images_to_send?: string[];
+  // Ciudad del cliente, detectada por el modelo. El handler la persiste en
+  // conversations.context para que sobreviva al recorte de la ventana de historial.
+  customer_city?: string | null;
 }
 
 export interface ConversationContext {
