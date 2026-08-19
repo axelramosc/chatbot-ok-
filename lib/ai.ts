@@ -26,7 +26,9 @@ type ParsedResponse = z.infer<typeof responseSchema>;
 // ============================================
 
 function formatProductEntry(p: Product, stockLabel: string): string {
-  let priceInfo = `Precio en mostrador de SALTILLO por ${p.unit}: $${p.price} MXN`;
+  // La advertencia va pegada al número a propósito: una regla a 200 líneas de distancia
+  // no le gana a una cifra que el modelo tiene enfrente.
+  let priceInfo = `Precio SOLO para quien recoge en SALTILLO — NO lo des sin confirmar antes la ciudad del cliente (ver LOS TRES PRECIOS) — por ${p.unit}: $${p.price} MXN`;
   if (p.price_per_box) priceInfo += ` | por caja: $${p.price_per_box} MXN`;
   if (p.pieces_per_box) priceInfo += ` (${p.pieces_per_box} ${p.unit}s por caja)`;
 
