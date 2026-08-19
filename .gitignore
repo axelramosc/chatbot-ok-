@@ -38,3 +38,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude code — config y cuaderno de trabajo locales.
+# Se versionan settings.json, agents/ y skills/ (CLAUDE.md los da por existentes);
+# lo de abajo es de la máquina de cada quien o envejece mal.
+.claude/settings.local.json
+.claude/agent-memory/
+
+# capturas de automatización (playwright y similares)
+scripts/*.png
