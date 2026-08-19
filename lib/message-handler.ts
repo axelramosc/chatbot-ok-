@@ -111,13 +111,24 @@ export async function handleIncomingMessage(
 
     try {
       const [rm, p, f, bs, kf] = await Promise.all([
-        getRecentMessages(conversation.id, 10).catch(e => { console.warn("Error fetching recent messages:", e); return []; }),
+        // Se piden 11 porque el mensaje entrante ya se guardó arriba y viene incluido:
+        // se descarta enseguida para quedarnos con 10 de historial real.
+        getRecentMessages(conversation.id, 11).catch(e => { console.warn("Error fetching recent messages:", e); return []; }),
         getActiveProducts().catch(e => { console.warn("Error fetching products:", e); return []; }),
         getActiveFAQs().catch(e => { console.warn("Error fetching FAQs:", e); return []; }),
         getBusinessSettings().catch(e => { console.warn("Error fetching business settings:", e); return {}; }),
         getKnowledgeFragments().catch(e => { console.warn("Error fetching knowledge:", e); return []; }),
       ]);
-      recentMessages = rm;
+      // El mensaje entrante ya se persistió (paso 4), así que la consulta lo devuelve.
+      // Hay que sacarlo del historial: si se queda, (a) el prompt cree que la conversación
+      // ya venía en curso y NUNCA dispara el saludo de PRIMER CONTACTO — que es justo donde
+      // se le pregunta la ciudad al cliente —, y (b) el mensaje se le manda al modelo dos
+      // veces, porque generateResponse vuelve a añadirlo como turno final.
+      const ultimo = rm[rm.length - 1] as { sender?: string; content?: string; wa_message_id?: string } | undefined;
+      const esElEntrante =
+        ultimo?.sender === "user" &&
+        (messageId ? ultimo.wa_message_id === messageId : ultimo.content === text);
+      recentMessages = esElEntrante ? rm.slice(0, -1) : rm;
       products = p;
       faqs = f;
       businessSettings = bs;
