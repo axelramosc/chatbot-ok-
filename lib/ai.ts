@@ -212,12 +212,21 @@ async function callLLMWithFailover(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
     try {
-      const { object } = await generateObject({
+      const { object, usage } = await generateObject({
         model: gateway(modelId),
         schema: responseSchema,
         schemaName: "AvaReply",
         schemaDescription: "Respuesta de la asistente Ava para el cliente.",
-        system: systemPrompt,
+        // El prompt del sistema son ~14,800 tokens que apenas cambian entre mensajes.
+        // Marcarlo con cacheControl hace que Anthropic reutilice el trabajo ya procesado:
+        // las lecturas cuestan 0.1x y responden en la mitad del tiempo. La ventana es
+        // deslizante (cada lectura reinicia el reloj de 5 min), verificado el 2026-08-18.
+        // Los proveedores de respaldo ignoran providerOptions.anthropic sin romperse.
+        system: {
+          role: "system",
+          content: systemPrompt,
+          providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
         messages,
         temperature: 0.5,
         // generateObject emite el objeto una sola vez (sin prosa duplicada), así
@@ -226,7 +235,15 @@ async function callLLMWithFailover(
         experimental_repairText: repairModelJson,
         abortSignal: controller.signal,
       });
-      console.log(`✅ AI Gateway: ${modelId} respondió OK en ${Date.now() - t0}ms`);
+      // Sin esta traza el ahorro es invisible: es la única forma de saber si la caché
+      // acierta de verdad en producción, en vez de suponerlo.
+      const det = usage?.inputTokenDetails;
+      const leidos = det?.cacheReadTokens ?? 0;
+      const escritos = det?.cacheWriteTokens ?? 0;
+      console.log(
+        `✅ AI Gateway: ${modelId} respondió OK en ${Date.now() - t0}ms` +
+          ` | caché: ${leidos > 0 ? `ACIERTO ${leidos} tk` : escritos > 0 ? `escribió ${escritos} tk` : "sin caché"}`,
+      );
       return object;
     } catch (err) {
       lastError = err;
