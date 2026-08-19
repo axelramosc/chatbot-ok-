@@ -134,7 +134,7 @@ export async function handleChannelMessage(
 
     try {
       const [rm, p, f, bs, kf] = await Promise.all([
-        getRecentMessages(conversation.id, 10).catch(e => { console.warn("Error fetching messages:", e); return []; }),
+        getRecentMessages(conversation.id, 25).catch(e => { console.warn("Error fetching messages:", e); return []; }),
         getActiveProducts().catch(e => { console.warn("Error fetching products:", e); return []; }),
         getActiveFAQs().catch(e => { console.warn("Error fetching FAQs:", e); return []; }),
         getBusinessSettings().catch(e => { console.warn("Error fetching settings:", e); return {}; }),
@@ -149,7 +149,11 @@ export async function handleChannelMessage(
       console.warn(`⚠️ Error building AI context:`, e);
     }
 
-    // 6. Generate AI response
+    // 6. Generate AI response. La ciudad guardada va aparte del historial: es el único
+    //    dato que no puede perderse por antigüedad (de él dependen precio y sucursal).
+    const ciudadGuardada =
+      (((conversation.context as Record<string, unknown>) || {})["customer_city"] as string | undefined) || null;
+
     const aiResponse = await generateResponse(
       text,
       products,
@@ -159,6 +163,8 @@ export async function handleChannelMessage(
       businessSettings,
       knowledgeFragments,
       { conversationId: conversation.id, phoneNumber: identifier },
+      undefined,
+      ciudadGuardada,
     );
 
     console.log(`🤖 [${channel}] Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
@@ -211,6 +217,10 @@ export async function handleChannelMessage(
       }
       if (contactName && contactName !== "Cliente" && !existingContext.confirmed_name) {
         contextPatch.confirmed_name = contactName;
+      }
+      // Solo se escribe cuando hay valor: un turno sin ciudad jamás borra la ya conocida.
+      if (aiResponse.customer_city) {
+        contextPatch.customer_city = aiResponse.customer_city;
       }
       await supabase
         .from("conversations")

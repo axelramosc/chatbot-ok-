@@ -112,7 +112,7 @@ export async function POST(request: Request) {
 
     // 4. Contexto para la IA (mismo set que usa el flujo normal del bot).
     const [recentMessages, products, faqs, businessSettings, knowledgeFragments] = await Promise.all([
-      getRecentMessages(conversation_id, 10).catch((e) => { console.warn("Error fetching recent messages:", e); return []; }),
+      getRecentMessages(conversation_id, 25).catch((e) => { console.warn("Error fetching recent messages:", e); return []; }),
       getActiveProducts().catch((e) => { console.warn("Error fetching products:", e); return []; }),
       getActiveFAQs().catch((e) => { console.warn("Error fetching FAQs:", e); return []; }),
       getBusinessSettings().catch((e) => { console.warn("Error fetching business settings:", e); return {}; }),
@@ -155,6 +155,9 @@ export async function POST(request: Request) {
         // En fotos manuales NO inyectamos la directiva al system prompt: sus reglas de
         // imágenes empujarían a usar un UUID de catálogo. El turno de arriba ya basta.
         image_url ? undefined : instruction,
+        // Misma ciudad que usa el flujo normal: si el equipo dispara /ava a media
+        // conversación, Ava no debe volver a preguntar algo que el cliente ya contestó.
+        (((conv.context as Record<string, unknown>) || {})["customer_city"] as string | undefined) || null,
       );
       aiMessage = aiResponse.message;
       catalogImageIds = aiResponse.images_to_send ?? [];

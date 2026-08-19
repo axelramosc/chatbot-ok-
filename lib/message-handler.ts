@@ -111,9 +111,11 @@ export async function handleIncomingMessage(
 
     try {
       const [rm, p, f, bs, kf] = await Promise.all([
-        // Se piden 11 porque el mensaje entrante ya se guardó arriba y viene incluido:
-        // se descarta enseguida para quedarnos con 10 de historial real.
-        getRecentMessages(conversation.id, 11).catch(e => { console.warn("Error fetching recent messages:", e); return []; }),
+        // Se piden 26 porque el mensaje entrante ya se guardó arriba y viene incluido:
+        // se descarta enseguida para quedarnos con 25 de historial real. Con 10 el bot
+        // perdía de vista a media conversación la ciudad, el color elegido y la cantidad,
+        // y volvía a preguntar lo que el cliente ya le había contestado.
+        getRecentMessages(conversation.id, 26).catch(e => { console.warn("Error fetching recent messages:", e); return []; }),
         getActiveProducts().catch(e => { console.warn("Error fetching products:", e); return []; }),
         getActiveFAQs().catch(e => { console.warn("Error fetching FAQs:", e); return []; }),
         getBusinessSettings().catch(e => { console.warn("Error fetching business settings:", e); return {}; }),
@@ -137,7 +139,12 @@ export async function handleIncomingMessage(
       console.warn(`⚠️ Error building AI context:`, e);
     }
 
-    // 7. Generar respuesta con IA
+    // 7. Generar respuesta con IA.
+    //    La ciudad guardada se le pasa aparte del historial: es el único dato que no
+    //    puede perderse por antigüedad, porque de él dependen el precio y la sucursal.
+    const ciudadGuardada =
+      (((conversation.context as Record<string, unknown>) || {})["customer_city"] as string | undefined) || null;
+
     const aiResponse = await generateResponse(
       text,
       products,
@@ -147,6 +154,8 @@ export async function handleIncomingMessage(
       businessSettings,
       knowledgeFragments,
       { conversationId: conversation.id, phoneNumber: from },
+      undefined,
+      ciudadGuardada,
     );
 
     console.log(`🤖 Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
@@ -193,6 +202,10 @@ export async function handleIncomingMessage(
       }
       if (contactName && contactName !== "Cliente" && !existingContext.confirmed_name) {
         contextPatch.confirmed_name = contactName;
+      }
+      // Solo se escribe cuando hay valor: un turno sin ciudad jamás borra la ya conocida.
+      if (aiResponse.customer_city) {
+        contextPatch.customer_city = aiResponse.customer_city;
       }
       await supabase
         .from("conversations")
