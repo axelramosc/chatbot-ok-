@@ -139,6 +139,39 @@ function buildKnowledgeContext(fragments: KnowledgeFragment[]): string {
     .join("\n");
 }
 
+// Ava no tiene reloj: sin esto no sabe qué día es "hoy". El 16-sep-2026 (feriado) le
+// dijo a varios clientes "sí, hoy abrimos", calculó mal la fecha del "próximo miércoles",
+// y aun con el cierre anotado en el horario seguía contestando "te esperamos en la tarde"
+// cuando el historial ya traía el horario normal: copiaba su propia respuesta anterior.
+// Va pegada al mensaje del cliente y NO al system prompt por dos razones: es lo último
+// que lee antes de responder, y la hora cambia cada minuto — dentro del bloque cacheado
+// rompería la caché en cada mensaje. Las fechas se calculan aquí porque el modelo se
+// equivoca contando días igual que contando cajas. Saltillo y Monterrey: UTC-6 todo el año.
+const ZONA_NEGOCIO = "America/Monterrey";
+const UN_DIA_MS = 24 * 60 * 60 * 1000;
+
+function buildClockNote(now: Date): string {
+  const fecha = new Intl.DateTimeFormat("es-MX", {
+    timeZone: ZONA_NEGOCIO, weekday: "long", day: "numeric", month: "long", year: "numeric",
+  }).format(now);
+  const hora = new Intl.DateTimeFormat("es-MX", {
+    timeZone: ZONA_NEGOCIO, hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(now);
+  const diaCorto = new Intl.DateTimeFormat("es-MX", {
+    timeZone: ZONA_NEGOCIO, weekday: "long", day: "numeric", month: "long",
+  });
+  const proximos = Array.from({ length: 7 }, (_, i) => diaCorto.format(new Date(now.getTime() + (i + 1) * UN_DIA_MS)));
+
+  return (
+    `[Nota del sistema — NO la escribió el cliente; úsala, pero nunca la cites: ` +
+    `ahora es ${fecha}, ${hora} h en Saltillo y Monterrey. Próximos días: ${proximos.join(" · ")}. ` +
+    `Si el cliente pregunta por horarios, por la dirección o si estamos abiertos, o dice que va a pasar, revisa PRIMERO el horario ` +
+    `de su sucursal y las CORRECCIONES DEL EQUIPO contra este día y esta hora. Si hoy la sucursal está cerrada o tiene horario ` +
+    `especial, DILO con todas sus letras en tu respuesta, aunque antes en esta conversación hayas dado el horario sin mencionarlo: ` +
+    `lo que digan sobre HOY manda sobre tus respuestas anteriores. Nunca le digas "te esperamos" para un momento en que la sucursal está cerrada.]`
+  );
+}
+
 function buildFAQContext(faqs: FAQ[]): string {
   if (faqs.length === 0) return "";
 
@@ -801,7 +834,9 @@ INTENCIONES:
   try {
     // generateObject devuelve el objeto ya validado contra el schema: una sola
     // emisión, sin prosa duplicada ni bloques ```json que se filtren al cliente.
-    const parsed = await callLLMWithFailover(SYSTEM_PROMPT, history, userMessage, attempts);
+    const parsed = await callLLMWithFailover(
+      SYSTEM_PROMPT, history, `${buildClockNote(new Date())}\n\n${userMessage}`, attempts,
+    );
 
     const message = (parsed.message || "").trim();
     const images = (parsed.images_to_send || []).filter(
