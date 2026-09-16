@@ -143,10 +143,13 @@ function buildKnowledgeContext(fragments: KnowledgeFragment[]): string {
 // dijo a varios clientes "sí, hoy abrimos", calculó mal la fecha del "próximo miércoles",
 // y aun con el cierre anotado en el horario seguía contestando "te esperamos en la tarde"
 // cuando el historial ya traía el horario normal: copiaba su propia respuesta anterior.
-// Va pegada al mensaje del cliente y NO al system prompt por dos razones: es lo último
-// que lee antes de responder, y la hora cambia cada minuto — dentro del bloque cacheado
-// rompería la caché en cada mensaje. Las fechas se calculan aquí porque el modelo se
-// equivoca contando días igual que contando cajas. Saltillo y Monterrey: UTC-6 todo el año.
+// Va en el turno final y NO en el system prompt: pesa más junto al mensaje que en medio
+// de 20 mil tokens de reglas, y la hora cambia cada minuto — dentro del bloque cacheado
+// rompería la caché en cada mensaje. Va ANTES del mensaje del cliente, no después:
+// pegada al final, Ava volvía a prometer "con gusto te cotizo el envío" antes de saber la
+// ciudad (7/13 mal contra 1/13 sin la nota; antes del mensaje, 8/8 bien). Las fechas se
+// calculan aquí porque el modelo se equivoca contando días igual que contando cajas.
+// Saltillo y Monterrey: UTC-6 todo el año.
 const ZONA_NEGOCIO = "America/Monterrey";
 const UN_DIA_MS = 24 * 60 * 60 * 1000;
 
