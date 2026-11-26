@@ -24,13 +24,13 @@ describe("getBotControl (A8, S10: fail-closed)", () => {
     expect(await getBotControl()).toMatchObject({ enabled: true, failClosed: false });
   });
   it("fila enabled=false → apagado por orden explícita", async () => {
-    state.botControl = { data: { enabled: false, redirect_phone: "8442739524" }, error: null };
+    state.botControl = { data: { enabled: false, redirect_phone: "8445089882" }, error: null };
     expect(await getBotControl()).toMatchObject({ enabled: false, failClosed: false });
   });
   it("error de lectura → apagado + log de error + teléfono constante", async () => {
     state.botControl = { data: null, error: { message: "relation does not exist" } };
     const r = await getBotControl();
-    expect(r).toEqual({ enabled: false, redirectPhone: "8442739524", failClosed: true });
+    expect(r).toEqual({ enabled: false, redirectPhone: "8445089882", failClosed: true });
     expect(console.error).toHaveBeenCalled();
   });
   it("fila inexistente → apagado", async () => {
@@ -42,25 +42,25 @@ describe("getBotControl (A8, S10: fail-closed)", () => {
     expect((await getBotControl()).enabled).toBe(false);
   });
   it.each([["true"], [1], [null], [undefined]])("enabled no booleano (%s) → apagado", async (v) => {
-    state.botControl = { data: { enabled: v, redirect_phone: "8442739524" }, error: null };
+    state.botControl = { data: { enabled: v, redirect_phone: "8445089882" }, error: null };
     expect((await getBotControl()).enabled).toBe(false);
   });
   it("teléfono inválido en BD → usa el constante", async () => {
     state.botControl = { data: { enabled: false, redirect_phone: "<script>" }, error: null };
-    expect((await getBotControl()).redirectPhone).toBe("8442739524");
+    expect((await getBotControl()).redirectPhone).toBe("8445089882");
   });
 });
 
 describe("buildRedirectMessage (S5: texto fijo)", () => {
-  it("incluye 844 273 9524 y es idéntico en cada llamada", () => {
-    const m = buildRedirectMessage("8442739524");
-    expect(m).toContain("844 273 9524");
-    expect(buildRedirectMessage("8442739524")).toBe(m);
+  it("incluye 844 508 9882 y es idéntico en cada llamada", () => {
+    const m = buildRedirectMessage("8445089882");
+    expect(m).toContain("844 508 9882");
+    expect(buildRedirectMessage("8445089882")).toBe(m);
   });
   it("no interpola datos arbitrarios: un teléfono malicioso cae al constante", () => {
     const m = buildRedirectMessage("<img src=x onerror=alert(1)>");
     expect(m).not.toContain("<img");
-    expect(m).toContain("844 273 9524");
+    expect(m).toContain("844 508 9882");
   });
   it("la función solo acepta teléfono (sin parámetros de cliente/contacto)", () => {
     expect(buildRedirectMessage.length).toBeLessThanOrEqual(1);
@@ -88,7 +88,7 @@ describe("sendBotOffRedirect", () => {
   const base = () => ({
     conversationId: "c1",
     context: {} as Record<string, unknown>,
-    redirectPhone: "8442739524",
+    redirectPhone: "8445089882",
     send: vi.fn(async () => true),
     saveBotMessage: vi.fn(async () => ({})),
     label: "test",
@@ -97,8 +97,8 @@ describe("sendBotOffRedirect", () => {
   it("envía el aviso fijo, lo guarda como mensaje bot y reserva la marca", async () => {
     const p = base();
     expect(await sendBotOffRedirect(p)).toBe("sent");
-    expect(p.send).toHaveBeenCalledWith(buildRedirectMessage("8442739524"));
-    expect(p.saveBotMessage).toHaveBeenCalledWith("c1", buildRedirectMessage("8442739524"));
+    expect(p.send).toHaveBeenCalledWith(buildRedirectMessage("8445089882"));
+    expect(p.saveBotMessage).toHaveBeenCalledWith("c1", buildRedirectMessage("8445089882"));
     expect(state.rpcCalls[0].fn).toBe("claim_bot_off_notice");
   });
   it("marca reciente en contexto → no envía y no toca la BD (A4)", async () => {

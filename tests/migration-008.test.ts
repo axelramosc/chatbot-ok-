@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it } from "vitest";
  */
 const MIGRATION = readFileSync(join(__dirname, "../supabase/migrations/008_bot_control.sql"), "utf8");
 const ROLLBACK = readFileSync(join(__dirname, "../supabase/rollbacks/008_bot_control_down.sql"), "utf8");
+const M009 = readFileSync(join(__dirname, "../supabase/migrations/009_bot_control_phone.sql"), "utf8");
+const R009 = readFileSync(join(__dirname, "../supabase/rollbacks/009_bot_control_phone_down.sql"), "utf8");
 
 const CONV = "11111111-1111-1111-1111-111111111111";
 
@@ -180,5 +182,39 @@ describe("migración 008", () => {
     expect((await db.query("select count(*)::int as n from conversations")).rows[0]).toEqual({ n: 1 });
     await db.exec(MIGRATION);
     expect((await db.query("select count(*)::int as n from bot_control")).rows[0]).toEqual({ n: 1 });
+  });
+
+  describe("migración 009 (nuevo teléfono)", () => {
+    const phone = async () => (await db.query<{ redirect_phone: string }>("select redirect_phone from bot_control")).rows[0].redirect_phone;
+
+    it("cambia la fila existente al teléfono nuevo y deja el default nuevo; es idempotente", async () => {
+      expect(await phone()).toBe("8442739524");
+      await db.exec(M009);
+      expect(await phone()).toBe("8445089882");
+      await db.exec(M009);
+      expect(await phone()).toBe("8445089882");
+      await db.exec("delete from bot_control");
+      await db.exec("insert into bot_control (id) values (1)");
+      expect(await phone()).toBe("8445089882"); // default nuevo
+    });
+
+    it("no pisa un teléfono puesto a mano", async () => {
+      await db.exec("update bot_control set redirect_phone = '5551234567'");
+      await db.exec(M009);
+      expect(await phone()).toBe("5551234567");
+    });
+
+    it("no cambia enabled (el bot sigue como estaba)", async () => {
+      await db.exec("update bot_control set enabled = false");
+      await db.exec(M009);
+      const r = await db.query<{ enabled: boolean }>("select enabled from bot_control");
+      expect(r.rows[0].enabled).toBe(false);
+    });
+
+    it("la reversa devuelve el teléfono anterior", async () => {
+      await db.exec(M009);
+      await db.exec(R009);
+      expect(await phone()).toBe("8442739524");
+    });
   });
 });

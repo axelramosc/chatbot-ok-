@@ -24,6 +24,18 @@ describe("S5: UI en texto plano", () => {
   });
 });
 
+describe("teléfono de redirección (CB-001 §10)", () => {
+  it("el código ya no contiene el teléfono anterior en el aviso ni en el CRM", () => {
+    for (const f of ["lib/bot-switch.ts", "app/components/bot-control.tsx"]) {
+      expect(read(f), f).not.toMatch(/8442739524|844 273 9524/);
+    }
+  });
+  it("el CRM y el fallback usan 844 508 9882", () => {
+    expect(read("lib/bot-switch.ts")).toContain('"8445089882"');
+    expect(read("app/components/bot-control.tsx")).toContain("844 508 9882");
+  });
+});
+
 describe("S6: ninguna llave privada en el bundle del cliente", () => {
   it("los archivos 'use client' no referencian SERVICE_ROLE ni lib/supabase (service role)", () => {
     const clientFiles = walk("app").filter((f) => /\.tsx?$/.test(f) && read(f).trimStart().startsWith('"use client"'));
