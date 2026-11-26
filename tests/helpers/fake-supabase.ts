@@ -18,7 +18,7 @@ export interface FakeState {
 
 export function makeState(): FakeState {
   return {
-    botControl: { data: { enabled: true, redirect_phone: "8442739524" }, error: null },
+    botControl: { data: { enabled: true, redirect_phone: "8445089882" }, error: null },
     botControlThrows: false,
     claim: { data: true, error: null },
     claimThrows: false,

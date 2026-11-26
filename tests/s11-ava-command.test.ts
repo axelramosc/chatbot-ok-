@@ -11,7 +11,7 @@ interface Row { [k: string]: unknown }
 const store = vi.hoisted(() => ({
   conversations: [] as Row[],
   messages: [] as Row[],
-  botControl: { id: 1, enabled: false, redirect_phone: "8442739524" } as Row,
+  botControl: { id: 1, enabled: false, redirect_phone: "8445089882" } as Row,
 }));
 
 const h = vi.hoisted(() => ({
@@ -104,7 +104,7 @@ import { handleChannelMessage } from "../lib/channel-handler";
 import { buildRedirectMessage } from "../lib/bot-switch";
 import type { ChannelClient } from "../lib/channels/types";
 
-const REDIRECT = buildRedirectMessage("8442739524");
+const REDIRECT = buildRedirectMessage("8445089882");
 
 function avaRequest(conversationId: string) {
   return new Request("https://crm/api/ava-command", {
@@ -121,7 +121,7 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   store.messages.length = 0;
   store.conversations.length = 0;
-  store.botControl = { id: 1, enabled: false, redirect_phone: "8442739524" };
+  store.botControl = { id: 1, enabled: false, redirect_phone: "8445089882" };
   h.getUser.mockResolvedValue({ data: { user: { id: "u1" } } });
   h.generateResponse.mockResolvedValue({ message: "Respuesta de Ava", intent: "interested", products_mentioned: [], customer_city: null, images_to_send: [] });
   h.sendTextMessage.mockResolvedValue(true);
@@ -167,7 +167,7 @@ describe("S11: /ava con el bot apagado NO reactiva a Ava para el siguiente mensa
   });
 
   it("control: con el bot ENCENDIDO el mismo siguiente mensaje sí lo contesta Ava", async () => {
-    store.botControl = { id: 1, enabled: true, redirect_phone: "8442739524" };
+    store.botControl = { id: 1, enabled: true, redirect_phone: "8445089882" };
     store.conversations.push({ id: "c-s11b", phone_number: "5218441112222", customer_name: "Cliente", status: "attended", channel: "whatsapp", context: {} });
     await avaCommand(avaRequest("c-s11b"));
     h.generateResponse.mockClear();

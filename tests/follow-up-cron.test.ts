@@ -22,7 +22,7 @@ beforeEach(() => {
 
 describe("cron follow-up (A5, S9)", () => {
   it("apagado → { skipped: 'bot_off' }, no envía y no toca conversaciones", async () => {
-    state.botControl = { data: { enabled: false, redirect_phone: "8442739524" }, error: null };
+    state.botControl = { data: { enabled: false, redirect_phone: "8445089882" }, error: null };
     const res = await GET(auth());
     expect(await res.json()).toEqual({ skipped: "bot_off" });
     expect(send).not.toHaveBeenCalled();

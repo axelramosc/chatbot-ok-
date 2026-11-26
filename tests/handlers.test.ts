@@ -52,7 +52,7 @@ import { handleChannelMessage } from "../lib/channel-handler";
 import { buildRedirectMessage } from "../lib/bot-switch";
 import type { NormalizedMessage, ChannelClient } from "../lib/channels/types";
 
-const REDIRECT = buildRedirectMessage("8442739524");
+const REDIRECT = buildRedirectMessage("8445089882");
 const GENERIC_ERROR = /problema procesando tu mensaje/;
 
 const AI_OK = {
@@ -77,7 +77,7 @@ function conv(overrides: Record<string, unknown> = {}) {
 }
 
 function setOff() {
-  state.botControl = { data: { enabled: false, redirect_phone: "8442739524" }, error: null };
+  state.botControl = { data: { enabled: false, redirect_phone: "8445089882" }, error: null };
 }
 
 beforeEach(() => {
@@ -116,7 +116,7 @@ describe("WhatsApp — message-handler", () => {
     expect(h.generateResponse).not.toHaveBeenCalled();
     expect(h.sendTextMessage).toHaveBeenCalledTimes(1);
     expect(h.sendTextMessage).toHaveBeenCalledWith("5218441112222", REDIRECT);
-    expect(REDIRECT).toContain("844 273 9524");
+    expect(REDIRECT).toContain("844 508 9882");
     // Orden: primero el entrante (user), luego el aviso (bot).
     expect(order[0]).toMatch(/^save:user:/);
     expect(order[1]).toMatch(/^save:bot:/);
@@ -142,7 +142,7 @@ describe("WhatsApp — message-handler", () => {
     setOff();
     await handleIncomingMessage(payload);
     expect(h.generateResponse).not.toHaveBeenCalled();
-    state.botControl = { data: { enabled: true, redirect_phone: "8442739524" }, error: null };
+    state.botControl = { data: { enabled: true, redirect_phone: "8445089882" }, error: null };
     h.getOrCreateConversation.mockResolvedValue(conv({ context: { bot_off_notice_at: new Date().toISOString() } }));
     await handleIncomingMessage(payload);
     expect(h.generateResponse).toHaveBeenCalledTimes(1);

@@ -10,7 +10,7 @@ import { getSupabase } from "./supabase";
  */
 
 /** Teléfono de redirección usado si la BD no lo entrega o es inválido. */
-export const BOT_REDIRECT_PHONE_DEFAULT = "8442739524";
+export const BOT_REDIRECT_PHONE_DEFAULT = "8445089882";
 
 /** Ventana anti-spam: máximo un aviso por conversación cada 6 horas. */
 export const BOT_OFF_NOTICE_WINDOW_MS = 6 * 60 * 60 * 1000;
@@ -63,7 +63,7 @@ export async function getBotControl(): Promise<BotControl> {
   }
 }
 
-/** "8442739524" → "844 273 9524". */
+/** "8445089882" → "844 508 9882". */
 function formatPhone(phone: string): string {
   return `${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6)}`;
 }

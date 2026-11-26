@@ -118,7 +118,7 @@ export function BotControlProvider({ children }: { children: React.ReactNode }) 
             </h3>
             <p style={{ margin: "0.75rem 0 1.25rem", fontSize: "0.9rem", color: "var(--text-secondary)" }}>
               {confirming === "off"
-                ? "Ava dejará de contestar en todos los canales y los clientes serán redirigidos al 844 273 9524."
+                ? "Ava dejará de contestar en todos los canales y los clientes serán redirigidos al 844 508 9882."
                 : "Ava volverá a contestar a los clientes en todos los canales."}
             </p>
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
@@ -189,7 +189,7 @@ export function BotOffBanner() {
       <AlertTriangle size={16} />
       <span>
         {state === "off"
-          ? "Ava está APAGADA: los clientes reciben un aviso para comunicarse al 844 273 9524. Los mensajes se siguen guardando aquí."
+          ? "Ava está APAGADA: los clientes reciben un aviso para comunicarse al 844 508 9882. Los mensajes se siguen guardando aquí."
           : "No se pudo verificar el estado del bot. Si no se puede confirmar, el bot permanece apagado."}
       </span>
       <button type="button" className="crm-bot-banner-btn" onClick={state === "off" ? requestToggle : refresh}>
