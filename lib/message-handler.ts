@@ -12,6 +12,7 @@ import {
 } from "./database";
 import { getSupabase } from "./supabase";
 import { generateResponse } from "./ai";
+import { getBotControl, sendBotOffRedirect } from "./bot-switch";
 import { notifyAdminOfSale, notifyAdminOfUnknownQuery, notifyAdminOfRepresentativeRequest } from "./notifications";
 import type { WhatsAppWebhookPayload } from "./types";
 
@@ -81,6 +82,22 @@ export async function handleIncomingMessage(
         .eq("id", conversation.id);
     } catch (e) {
       console.warn(`⚠️ Non-critical error saving incoming message:`, e);
+    }
+
+    // 4b. Interruptor global (CB-001). El mensaje entrante ya quedó guardado (visible en la
+    //     bandeja). Con el bot apagado — o si no se puede saber (fail-closed) — NO corre la IA:
+    //     se manda el aviso fijo de redirección (máx. 1 cada 6 h) y se termina aquí.
+    const botControl = await getBotControl();
+    if (!botControl.enabled) {
+      await sendBotOffRedirect({
+        conversationId: conversation.id,
+        context: conversation.context as Record<string, unknown>,
+        redirectPhone: botControl.redirectPhone,
+        send: (t) => sendTextMessage(from, t),
+        saveBotMessage: (id, t) => saveMessage(id, "bot", t),
+        label: "whatsapp",
+      });
+      return;
     }
 
     // 5. Fresh status check from DB (non-critical)
@@ -292,6 +309,13 @@ export async function handleIncomingMessage(
 
   } catch (error) {
     console.error(`❌ Error handling message from ${from}:`, error instanceof Error ? error.stack : JSON.stringify(error));
+
+    // CB-001: con el bot apagado (o sin poder saberlo) jamás se manda el mensaje genérico de error.
+    const botControlOnError = await getBotControl();
+    if (!botControlOnError.enabled) {
+      console.log(`🤫 Error occurred but the bot is OFF — staying silent.`);
+      return;
+    }
 
     // Check if this conversation is being handled by admin before sending error message.
     // If admin has control, stay silent — don't confuse the client with bot error messages.

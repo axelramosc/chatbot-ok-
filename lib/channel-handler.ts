@@ -10,6 +10,7 @@ import {
 } from "./database";
 import { getSupabase } from "./supabase";
 import { generateResponse } from "./ai";
+import { getBotControl, sendBotOffRedirect } from "./bot-switch";
 import {
   notifyAdminOfSale,
   notifyAdminOfUnknownQuery,
@@ -100,6 +101,22 @@ export async function handleChannelMessage(
         .eq("id", conversation.id);
     } catch (e) {
       console.warn(`⚠️ Non-critical error saving incoming [${channel}] message:`, e);
+    }
+
+    // 3b. Interruptor global (CB-001). El mensaje entrante ya quedó guardado (visible en la
+    //     bandeja). Con el bot apagado — o si no se puede saber (fail-closed) — NO corre la IA:
+    //     se manda el aviso fijo de redirección (máx. 1 cada 6 h) y se termina aquí.
+    const botControl = await getBotControl();
+    if (!botControl.enabled) {
+      await sendBotOffRedirect({
+        conversationId: conversation.id,
+        context: conversation.context as Record<string, unknown>,
+        redirectPhone: botControl.redirectPhone,
+        send: (t) => client.sendMessage(senderId, t),
+        saveBotMessage: (id, t) => saveMessage(id, "bot", t),
+        label: channel,
+      });
+      return;
     }
 
     // 4. Fresh status check
@@ -312,6 +329,13 @@ export async function handleChannelMessage(
       `❌ Error handling [${channel}] message from ${senderId}:`,
       error instanceof Error ? error.stack : JSON.stringify(error)
     );
+
+    // CB-001: con el bot apagado (o sin poder saberlo) jamás se manda el mensaje genérico de error.
+    const botControlOnError = await getBotControl();
+    if (!botControlOnError.enabled) {
+      console.log(`🤫 [${channel}] Error occurred but the bot is OFF — staying silent.`);
+      return;
+    }
 
     // Send fallback error message via the same channel
     await client
