@@ -1343,6 +1343,7 @@ select {
 
 .crm-bot-switch-mobile.crm-bot-on  { color: #15803d !important; }
 .crm-bot-switch-mobile.crm-bot-off { color: #b91c1c !important; font-weight: 700; }
+.crm-bot-switch-mobile.crm-bot-unknown { color: #b45309 !important; font-weight: 700; }
 
 .crm-bot-banner {
   display: flex;

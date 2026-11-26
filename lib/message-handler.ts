@@ -177,6 +177,23 @@ export async function handleIncomingMessage(
 
     console.log(`🤖 Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
 
+    // 7b. Rechequeo del interruptor (CB-001/R1). Si el bot se apagó MIENTRAS la IA generaba
+    //     (o ya no se puede saber → fail-closed), la respuesta de la IA se descarta: no se
+    //     guarda, ni se envía, ni salen imágenes ni notificaciones al admin. Solo la redirección.
+    const botControlPostAI = await getBotControl();
+    if (!botControlPostAI.enabled) {
+      console.log(`🔕 Bot apagado durante la generación: se descarta la respuesta de la IA.`);
+      await sendBotOffRedirect({
+        conversationId: conversation.id,
+        context: conversation.context as Record<string, unknown>,
+        redirectPhone: botControlPostAI.redirectPhone,
+        send: (t) => sendTextMessage(from, t),
+        saveBotMessage: (id, t) => saveMessage(id, "bot", t),
+        label: "whatsapp",
+      });
+      return;
+    }
+
     // 8. SECOND status check (non-critical)
     try {
       const supabase = getSupabase();

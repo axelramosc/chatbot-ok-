@@ -186,6 +186,23 @@ export async function handleChannelMessage(
 
     console.log(`🤖 [${channel}] Response (intent: ${aiResponse.intent}): ${aiResponse.message.substring(0, 100)}...`);
 
+    // 6b. Rechequeo del interruptor (CB-001/R1). Si el bot se apagó MIENTRAS la IA generaba
+    //     (o ya no se puede saber → fail-closed), la respuesta de la IA se descarta: no se
+    //     guarda, ni se envía, ni salen imágenes ni notificaciones al admin. Solo la redirección.
+    const botControlPostAI = await getBotControl();
+    if (!botControlPostAI.enabled) {
+      console.log(`🔕 [${channel}] Bot apagado durante la generación: se descarta la respuesta de la IA.`);
+      await sendBotOffRedirect({
+        conversationId: conversation.id,
+        context: conversation.context as Record<string, unknown>,
+        redirectPhone: botControlPostAI.redirectPhone,
+        send: (t) => client.sendMessage(senderId, t),
+        saveBotMessage: (id, t) => saveMessage(id, "bot", t),
+        label: channel,
+      });
+      return;
+    }
+
     // 7. Second status check (in case admin intervened during AI call)
     try {
       const supabase = getSupabase();

@@ -12,14 +12,17 @@ const h = vi.hoisted(() => ({
   getOrCreateConversation: vi.fn(),
   isMessageProcessed: vi.fn(),
   clientSend: vi.fn(),
+  notifySale: vi.fn(async () => {}),
+  notifyUnknown: vi.fn(async () => {}),
+  notifyRep: vi.fn(async () => {}),
 }));
 
 vi.mock("../lib/supabase", () => ({ getSupabase: () => makeFakeSupabase(state) }));
 vi.mock("../lib/ai", () => ({ generateResponse: h.generateResponse }));
 vi.mock("../lib/notifications", () => ({
-  notifyAdminOfSale: vi.fn(async () => {}),
-  notifyAdminOfUnknownQuery: vi.fn(async () => {}),
-  notifyAdminOfRepresentativeRequest: vi.fn(async () => {}),
+  notifyAdminOfSale: h.notifySale,
+  notifyAdminOfUnknownQuery: h.notifyUnknown,
+  notifyAdminOfRepresentativeRequest: h.notifyRep,
 }));
 vi.mock("../lib/whatsapp", () => ({
   extractMessageData: () => ({
@@ -90,6 +93,7 @@ beforeEach(() => {
   h.sendTextMessage.mockResolvedValue(true);
   h.sendImageMessage.mockResolvedValue(true);
   h.clientSend.mockResolvedValue(true);
+  h.notifySale.mockResolvedValue(undefined);
   h.saveMessage.mockImplementation(async (_c: string, sender: string, content: string) => {
     order.push(`save:${sender}:${content.slice(0, 12)}`);
     return {};
@@ -191,6 +195,61 @@ describe("WhatsApp — message-handler", () => {
     await handleIncomingMessage(payload);
     expect(h.generateResponse).not.toHaveBeenCalled();
   });
+
+  describe("R1: el bot se apaga MIENTRAS la IA genera", () => {
+    const AI_SALE = { ...AI_OK, intent: "ready_to_buy", products_mentioned: ["p1"], images_to_send: ["p1"] };
+
+    it("se descarta la respuesta de la IA (no se guarda ni se envía, sin imágenes ni notificaciones) y solo sale la redirección", async () => {
+      h.generateResponse.mockImplementation(async () => {
+        setOff();
+        return AI_SALE;
+      });
+      await handleIncomingMessage(payload);
+      expect(h.generateResponse).toHaveBeenCalledTimes(1);
+      expect(h.sendTextMessage).toHaveBeenCalledTimes(1);
+      expect(h.sendTextMessage).toHaveBeenCalledWith("5218441112222", REDIRECT);
+      expect(h.sendTextMessage).not.toHaveBeenCalledWith(expect.anything(), AI_OK.message);
+      expect(h.sendImageMessage).not.toHaveBeenCalled();
+      expect(h.notifySale).not.toHaveBeenCalled();
+      expect(h.notifyUnknown).not.toHaveBeenCalled();
+      expect(h.notifyRep).not.toHaveBeenCalled();
+      // solo se guardó el entrante y el aviso; jamás el texto de la IA
+      expect(order.some((o) => o.includes(AI_OK.message.slice(0, 12)))).toBe(false);
+      expect(order.filter((o) => o.startsWith("save:bot:"))).toHaveLength(1);
+      // y no se tocó el estado de la conversación por intención de venta
+      expect(state.calls.some((c) => c.table === "conversations" && c.op === "update" && JSON.stringify(c.args).includes("last_intent"))).toBe(false);
+    });
+
+    it("fail-closed: si tras la IA ya no se puede leer bot_control → mismo descarte", async () => {
+      h.generateResponse.mockImplementation(async () => {
+        state.botControl = { data: null, error: { message: "db down" } };
+        return AI_SALE;
+      });
+      await handleIncomingMessage(payload);
+      expect(h.sendTextMessage).toHaveBeenCalledTimes(1);
+      expect(h.sendTextMessage).toHaveBeenCalledWith("5218441112222", REDIRECT);
+      expect(h.sendImageMessage).not.toHaveBeenCalled();
+      expect(h.notifySale).not.toHaveBeenCalled();
+    });
+
+    it("anti-spam: si ya se avisó dentro de 6 h, tras descartar la IA no se repite el aviso", async () => {
+      h.getOrCreateConversation.mockResolvedValue(conv({ context: { bot_off_notice_at: new Date().toISOString() } }));
+      h.generateResponse.mockImplementation(async () => {
+        setOff();
+        return AI_SALE;
+      });
+      await handleIncomingMessage(payload);
+      expect(h.sendTextMessage).not.toHaveBeenCalled();
+      expect(h.sendImageMessage).not.toHaveBeenCalled();
+    });
+
+    it("regresión: si el bot sigue encendido tras la IA, todo sale como siempre (respuesta + notificación)", async () => {
+      h.generateResponse.mockResolvedValue(AI_SALE);
+      await handleIncomingMessage(payload);
+      expect(h.sendTextMessage).toHaveBeenCalledWith("5218441112222", AI_OK.message);
+      expect(h.notifySale).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe.each(["messenger", "instagram"] as const)("%s — channel-handler", (channel) => {
@@ -256,5 +315,55 @@ describe.each(["messenger", "instagram"] as const)("%s — channel-handler", (ch
     h.generateResponse.mockRejectedValue(new Error("groq failed"));
     await handleChannelMessage(msg, client());
     expect(h.clientSend).toHaveBeenCalledWith("PSID123", expect.stringMatching(GENERIC_ERROR));
+  });
+
+  describe("R1: el bot se apaga MIENTRAS la IA genera", () => {
+    const AI_SALE = { ...AI_OK, intent: "ready_to_buy", products_mentioned: ["p1"], images_to_send: ["p1"] };
+
+    it("se descarta la respuesta de la IA y solo sale la redirección (sin imágenes ni notificaciones)", async () => {
+      const sendImage = vi.fn(async () => true);
+      const c = { name: channel, sendMessage: h.clientSend, sendImage } as unknown as ChannelClient;
+      h.generateResponse.mockImplementation(async () => {
+        setOff();
+        return AI_SALE;
+      });
+      await handleChannelMessage(msg, c);
+      expect(h.generateResponse).toHaveBeenCalledTimes(1);
+      expect(h.clientSend).toHaveBeenCalledTimes(1);
+      expect(h.clientSend).toHaveBeenCalledWith("PSID123", REDIRECT);
+      expect(h.clientSend).not.toHaveBeenCalledWith(expect.anything(), AI_OK.message);
+      expect(sendImage).not.toHaveBeenCalled();
+      expect(h.notifySale).not.toHaveBeenCalled();
+      expect(order.some((o) => o.includes(AI_OK.message.slice(0, 12)))).toBe(false);
+      expect(order.filter((o) => o.startsWith("save:bot:"))).toHaveLength(1);
+    });
+
+    it("fail-closed: tras la IA ya no se puede leer bot_control → mismo descarte", async () => {
+      h.generateResponse.mockImplementation(async () => {
+        state.botControlThrows = true;
+        return AI_SALE;
+      });
+      await handleChannelMessage(msg, client());
+      expect(h.clientSend).toHaveBeenCalledTimes(1);
+      expect(h.clientSend).toHaveBeenCalledWith("PSID123", REDIRECT);
+      expect(h.notifySale).not.toHaveBeenCalled();
+    });
+
+    it("anti-spam: aviso reciente → tras descartar la IA no se repite", async () => {
+      h.getOrCreateConversation.mockResolvedValue(conv({ context: { bot_off_notice_at: new Date().toISOString() } }));
+      h.generateResponse.mockImplementation(async () => {
+        setOff();
+        return AI_SALE;
+      });
+      await handleChannelMessage(msg, client());
+      expect(h.clientSend).not.toHaveBeenCalled();
+    });
+
+    it("regresión: encendido tras la IA → respuesta y notificación como siempre", async () => {
+      h.generateResponse.mockResolvedValue(AI_SALE);
+      await handleChannelMessage(msg, client());
+      expect(h.clientSend).toHaveBeenCalledWith("PSID123", AI_OK.message);
+      expect(h.notifySale).toHaveBeenCalledTimes(1);
+    });
   });
 });
