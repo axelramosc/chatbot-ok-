@@ -2,7 +2,7 @@
 
 import { createClient } from "../../lib/supabase-client";
 import { useState } from "react";
-import { LogIn, Mail } from "lucide-react";
+import { Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -13,16 +13,6 @@ export default function LoginPage() {
 
   const supabase = createClient();
   const router = useRouter();
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    });
-  };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +91,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleEmailLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "1.25rem" }}>
+          <form onSubmit={handleEmailLogin} style={{ display: "flex", flexDirection: "column", gap: "1rem", marginBottom: "0" }}>
             <div>
               <label style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.8375rem", fontWeight: 600, color: "var(--text-secondary)" }}>
                 Correo electrónico
@@ -135,36 +125,6 @@ export default function LoginPage() {
               {loading ? "Iniciando sesión..." : "Entrar con correo"}
             </button>
           </form>
-
-          <div style={{ position: "relative", marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <div style={{ flex: 1, height: "1px", background: "var(--border-color)" }} />
-            <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", whiteSpace: "nowrap" }}>o continúa con</span>
-            <div style={{ flex: 1, height: "1px", background: "var(--border-color)" }} />
-          </div>
-
-          <button
-            onClick={handleGoogleLogin}
-            type="button"
-            disabled={loading}
-            style={{
-              width: "100%",
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: "0.625rem",
-              padding: "0.8125rem",
-              background: "white",
-              color: "#374151",
-              border: "1.5px solid var(--border-color)",
-              borderRadius: "var(--radius-sm)",
-              fontWeight: 500,
-              fontSize: "0.9375rem",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-            }}
-          >
-            <LogIn size={17} />
-            Iniciar sesión con Google
-          </button>
         </div>
       </div>
     </div>
