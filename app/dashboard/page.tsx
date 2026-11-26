@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { createClient } from "../../lib/supabase-client";
 import { ChevronLeft, Send, MessageSquare, Paperclip, X, Eraser, Trash2 } from "lucide-react";
 import { useToast } from "../components/toast";
+import { BotOffBanner } from "../components/bot-control";
 
 const getInitials = (name: string, phone: string) => {
   if (name) {
@@ -423,7 +424,9 @@ export default function InboxPage() {
   });
 
   return (
-    <div className="flex h-full w-full">
+    <div className="flex-col h-full w-full">
+    <BotOffBanner />
+    <div className="flex w-full" style={{ flex: 1, minHeight: 0 }}>
 
       {/* Click-away layer to dismiss the open 3-dot menu */}
       {menuConvId && (
@@ -797,6 +800,7 @@ export default function InboxPage() {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

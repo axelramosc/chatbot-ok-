@@ -6,6 +6,7 @@ import { MessageSquare, BookOpen, LogOut, Settings, BarChart2 } from "lucide-rea
 import { createClient } from "../../lib/supabase-client";
 import { useRouter } from "next/navigation";
 import { ToastProvider } from "../components/toast";
+import { BotControlProvider, BotSwitchButton } from "../components/bot-control";
 
 const navLinks = [
   { href: "/dashboard", icon: MessageSquare, label: "Bandeja de Entrada", short: "Bandeja" },
@@ -30,6 +31,7 @@ export default function DashboardLayout({
 
   return (
     <ToastProvider>
+    <BotControlProvider>
     <div className="flex h-screen">
       {/* Sidebar — desktop & tablet */}
       <div className="crm-sidebar">
@@ -52,6 +54,7 @@ export default function DashboardLayout({
         </nav>
 
         <div className="crm-sidebar-footer">
+          <BotSwitchButton variant="sidebar" />
           <button onClick={handleLogout} className="crm-logout-btn">
             <LogOut size={18} />
             <span className="crm-nav-label">Cerrar Sesión</span>
@@ -76,12 +79,14 @@ export default function DashboardLayout({
             <span>{short}</span>
           </Link>
         ))}
+        <BotSwitchButton variant="mobile" />
         <button onClick={handleLogout} className="crm-mobile-nav-item">
           <LogOut size={22} />
           <span>Salir</span>
         </button>
       </nav>
     </div>
+    </BotControlProvider>
     </ToastProvider>
   );
 }

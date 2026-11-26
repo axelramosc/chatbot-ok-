@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabase } from "../../../../lib/supabase";
 import { sendTextMessage } from "../../../../lib/whatsapp";
 import { getBusinessSettings } from "../../../../lib/database";
+import { getBotControl } from "../../../../lib/bot-switch";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,13 @@ export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  // CB-001: con el bot apagado (o sin poder saberlo) el cron no manda nada ni cambia estados.
+  const botControl = await getBotControl();
+  if (!botControl.enabled) {
+    console.log("🔕 Follow-up cron skipped: bot is OFF.");
+    return NextResponse.json({ skipped: "bot_off" });
   }
 
   const supabase = getSupabase();

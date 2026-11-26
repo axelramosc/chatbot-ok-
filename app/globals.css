@@ -1313,3 +1313,86 @@ select {
   font-weight: 600;
   color: var(--text-color);
 }
+
+
+/* ══════════════════════════════════════
+   BOT SWITCH (CB-001): botón, banner y diálogo
+══════════════════════════════════════ */
+
+.crm-bot-switch {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.375rem;
+  border-radius: var(--radius-sm);
+  justify-content: flex-start;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: white !important;
+  box-shadow: none !important;
+  transition: background 0.15s !important;
+}
+.crm-bot-switch.crm-bot-on      { background: #15803d !important; }
+.crm-bot-switch.crm-bot-off     { background: #b91c1c !important; }
+.crm-bot-switch.crm-bot-unknown { background: #b45309 !important; }
+.crm-bot-switch.crm-bot-loading { background: rgba(255, 255, 255, 0.14) !important; }
+.crm-bot-switch:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.crm-bot-switch-mobile.crm-bot-on  { color: #15803d !important; }
+.crm-bot-switch-mobile.crm-bot-off { color: #b91c1c !important; font-weight: 700; }
+.crm-bot-switch-mobile.crm-bot-unknown { color: #b45309 !important; font-weight: 700; }
+
+.crm-bot-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+.crm-bot-banner-off     { background: #b91c1c; }
+.crm-bot-banner-unknown { background: #b45309; }
+.crm-bot-banner > span { flex: 1; }
+.crm-bot-banner-btn {
+  background: white !important;
+  color: #1c2120 !important;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  box-shadow: none !important;
+}
+
+.crm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 1rem;
+}
+.crm-modal {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+}
+.crm-modal-cancel {
+  background: var(--bg-color) !important;
+  color: var(--text-color) !important;
+  box-shadow: none !important;
+}
+.crm-modal-danger { background: #b91c1c !important; }
+.crm-modal-ok     { background: var(--primary) !important; }
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .crm-bot-switch { justify-content: center; gap: 0; padding: 0.875rem; }
+}
